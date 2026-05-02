@@ -17,10 +17,12 @@ goal is a broader operations panel, not only inventory sync.
 4. Keep the root directory as the repository root.
 5. Use the default install command: `npm install`.
 6. Use the build command: `npm run vercel-build`.
+7. Leave `Output Directory` empty in Vercel Project Settings. This project is
+   not a static build and should not point to `public`.
 
 The app uses [api/index.js](/Users/nikolaiv37/projects/mebelcenter-shopify/api/index.js)
 as the serverless dashboard entrypoint. [vercel.json](/Users/nikolaiv37/projects/mebelcenter-shopify/vercel.json)
-routes `/`, `/dashboard`, and `/api/*` through that handler.
+rewrites `/`, `/dashboard`, and `/api/*` through that handler.
 
 ## 2. Add Environment Variables
 
