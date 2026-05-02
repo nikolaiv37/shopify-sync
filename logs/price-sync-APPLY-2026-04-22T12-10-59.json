@@ -1,0 +1,41 @@
+{
+  "runId": "price-sync-APPLY-2026-04-22T12-10-59",
+  "startedAt": "2026-04-22T12:10:59.678Z",
+  "store": "mebel-center.myshopify.com",
+  "apiVersion": "2025-10",
+  "dryRun": false,
+  "summaries": [
+    {
+      "feed": "megapap",
+      "label": "Megapap (megapap_en.xml)",
+      "xmlPath": "/Users/nikolaiv37/projects/mebelcenter-shopify/megapap_en.xml",
+      "expectedVendor": "Mebelcenter",
+      "dryRun": false,
+      "options": {
+        "limit": 10,
+        "concurrency": 3,
+        "variantsPerBulk": 100
+      },
+      "counts": {
+        "parsedFromXml": 3572,
+        "uniqueSkusInXml": 3572,
+        "xmlDupesCollapsed": 0,
+        "xmlEmptySku": 0,
+        "xmlInvalidPrice": 0,
+        "matchedSkusInShopify": 2935,
+        "matchedVariantRows": 2935,
+        "missingSkuInShopify": 637,
+        "vendorMismatches": 0,
+        "unchanged": 0,
+        "needsUpdate": 2935,
+        "updatesAttempted": 10,
+        "updated": 10,
+        "failed": 0
+      },
+      "formulas": {
+        "sourceTag": "wholesale_price_without_vat",
+        "multiplier": 1.7
+      }
+    }
+  ]
+}

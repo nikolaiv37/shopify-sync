@@ -1,10 +1,7 @@
-.env
 node_modules/
-logs/
+.env
+.env.*
+dist/
+build/
+.DS_Store
 *.log
-
-# Python scratch from previous sessions (CLI-based runs)
-*.json
-!package.json
-!.env.example
-__pycache__/

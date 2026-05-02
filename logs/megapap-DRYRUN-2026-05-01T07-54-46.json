@@ -1,0 +1,28 @@
+{
+  "date": "2026-05-01T07:54:46.209Z",
+  "finishedAt": "2026-05-01T07:55:23.724Z",
+  "elapsedSeconds": 37.5,
+  "dryRun": true,
+  "supplier": "megapap",
+  "vendor": "Mebelcenter",
+  "storeDomain": "mebel-center.myshopify.com",
+  "apiVersion": "2025-10",
+  "locationId": "gid://shopify/Location/104700412237",
+  "feedUrl": "https://www.megapap.com/?route=extension/feed/csxml_feed&token=Njk5TFAzMzU=&lang=en",
+  "counts": {
+    "supplierSkus": 3547,
+    "vendorProducts": 3014,
+    "storeVariants": 11195,
+    "vendorVariants": 3014,
+    "planned": 1634,
+    "updated": 0,
+    "errors": 0,
+    "skipped": {
+      "notInXml": 123,
+      "untracked": 0,
+      "unchanged": 1257,
+      "total": 1380
+    }
+  },
+  "errorDetail": []
+}

@@ -1,0 +1,28 @@
+{
+  "date": "2026-05-02T15:04:30.359Z",
+  "finishedAt": "2026-05-02T15:05:15.268Z",
+  "elapsedSeconds": 44.9,
+  "dryRun": true,
+  "supplier": "b2bmarkt",
+  "vendor": "Europe",
+  "storeDomain": "mebel-center.myshopify.com",
+  "apiVersion": "2025-10",
+  "locationId": "gid://shopify/Location/104700412237",
+  "feedUrl": "https://www.b2bmarkt.gr/feeds?key=24480YxsmxIsJNNHezInLuaTOhbYrWnYVluOPJIj5&act=1003&lang=2",
+  "counts": {
+    "supplierSkus": 7971,
+    "vendorProducts": 8074,
+    "storeVariants": 11086,
+    "vendorVariants": 8074,
+    "planned": 3029,
+    "updated": 0,
+    "errors": 0,
+    "skipped": {
+      "notInXml": 1101,
+      "untracked": 0,
+      "unchanged": 3944,
+      "total": 5045
+    }
+  },
+  "errorDetail": []
+}

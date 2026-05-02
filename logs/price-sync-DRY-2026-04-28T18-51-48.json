@@ -1,0 +1,41 @@
+{
+  "runId": "price-sync-DRY-2026-04-28T18-51-48",
+  "startedAt": "2026-04-28T18:51:48.592Z",
+  "store": "mebel-center.myshopify.com",
+  "apiVersion": "2025-10",
+  "dryRun": true,
+  "summaries": [
+    {
+      "feed": "b2bmarkt",
+      "label": "B2BMarkt (b2bmarkt.xml)",
+      "xmlPath": "/Users/nikolaiv37/projects/mebelcenter-shopify/b2bmarkt.xml",
+      "expectedVendor": "Europe",
+      "dryRun": true,
+      "options": {
+        "limit": 5,
+        "concurrency": 3,
+        "variantsPerBulk": 100
+      },
+      "counts": {
+        "parsedFromXml": 7892,
+        "uniqueSkusInXml": 7892,
+        "xmlDupesCollapsed": 0,
+        "xmlEmptySku": 0,
+        "xmlInvalidPrice": 0,
+        "matchedSkusInShopify": 7092,
+        "matchedVariantRows": 7092,
+        "missingSkuInShopify": 800,
+        "vendorMismatches": 0,
+        "unchanged": 7092,
+        "needsUpdate": 0,
+        "updatesAttempted": 0,
+        "updated": 0,
+        "failed": 0
+      },
+      "formulas": {
+        "sourceTag": "ZoneFourUnitPrice",
+        "multiplier": 3.1
+      }
+    }
+  ]
+}
