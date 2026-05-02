@@ -1,0 +1,1 @@
+This directory exists so Vercel's configured static output check passes.
