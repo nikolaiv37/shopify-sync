@@ -1,0 +1,11 @@
+query variantsBySku($query: String!) {
+  productVariants(first: 100, query: $query) {
+    nodes {
+      sku
+      inventoryQuantity
+      product {
+        title
+      }
+    }
+  }
+}

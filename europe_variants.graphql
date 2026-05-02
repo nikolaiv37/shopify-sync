@@ -1,0 +1,12 @@
+query europeVariants($cursor: String) {
+  productVariants(first: 100, after: $cursor, query: "product.vendor:Europe") {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id
+      sku
+      inventoryQuantity
+      inventoryItem { id tracked }
+      product { id title }
+    }
+  }
+}

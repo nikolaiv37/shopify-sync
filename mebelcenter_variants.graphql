@@ -1,0 +1,12 @@
+query mebelcenterVariants($cursor: String) {
+  productVariants(first: 100, after: $cursor, query: "product.vendor:Mebelcenter") {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id
+      sku
+      inventoryQuantity
+      inventoryItem { id tracked }
+      product { id title }
+    }
+  }
+}

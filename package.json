@@ -1,0 +1,26 @@
+{
+  "name": "mebelcenter-supplier-sync",
+  "version": "1.0.0",
+  "description": "Sync supplier XML feeds (Megapap, B2BMarkt) to Shopify inventory, filtered by vendor.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "sync": "node sync.js all",
+    "sync:megapap": "node sync.js megapap",
+    "sync:b2bmarkt": "node sync.js b2bmarkt",
+    "dry-run": "node sync.js all --dry-run",
+    "dry-run:megapap": "node sync.js megapap --dry-run",
+    "dry-run:b2bmarkt": "node sync.js b2bmarkt --dry-run",
+    "prices": "node update-prices.js",
+    "prices:apply": "node update-prices.js --apply",
+    "prices:b2b": "node update-prices.js b2bmarkt",
+    "prices:megapap": "node update-prices.js megapap"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "fast-xml-parser": "^4.5.0"
+  }
+}

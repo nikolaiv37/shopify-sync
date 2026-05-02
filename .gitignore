@@ -1,0 +1,10 @@
+.env
+node_modules/
+logs/
+*.log
+
+# Python scratch from previous sessions (CLI-based runs)
+*.json
+!package.json
+!.env.example
+__pycache__/

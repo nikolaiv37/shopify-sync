@@ -1,0 +1,27 @@
+query europeProducts($cursor: String) {
+  products(first: 100, after: $cursor, query: "vendor:Europe") {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id
+      title
+      vendor
+      variants(first: 50) {
+        nodes {
+          id
+          sku
+          inventoryQuantity
+          inventoryItem {
+            id
+            tracked
+            inventoryLevels(first: 10) {
+              nodes {
+                location { id name }
+                quantities(names: ["available"]) { name quantity }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
