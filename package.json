@@ -8,12 +8,17 @@
     "node": ">=18"
   },
   "scripts": {
+    "dev": "node dashboardServer.js",
+    "start": "node dashboardServer.js",
+    "build": "node --check dashboardServer.js && node --check api/index.js && node --check lib/dashboardApp.js && node --check lib/inventorySync.js && node --check sync.js",
+    "vercel-build": "npm run build",
     "sync": "node sync.js all",
     "sync:megapap": "node sync.js megapap",
     "sync:b2bmarkt": "node sync.js b2bmarkt",
     "dry-run": "node sync.js all --dry-run",
     "dry-run:megapap": "node sync.js megapap --dry-run",
     "dry-run:b2bmarkt": "node sync.js b2bmarkt --dry-run",
+    "dashboard": "node dashboardServer.js",
     "prices": "node update-prices.js",
     "prices:apply": "node update-prices.js --apply",
     "prices:b2b": "node update-prices.js b2bmarkt",

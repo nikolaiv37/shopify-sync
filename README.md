@@ -1,110 +1,157 @@
-# Mebelcenter Supplier Sync
+# Mebelcenter Operations
 
-Fetches supplier XML feeds (Megapap + B2BMarkt) and pushes inventory updates
-into Shopify, scoped to the matching vendor.
+Private operations dashboard and CLI tools for syncing supplier inventory into
+Shopify.
 
-| Supplier  | Shopify vendor | SKU tag         | Stock tag   |
-| --------- | -------------- | --------------- | ----------- |
-| Megapap   | `Mebelcenter`  | `<model>`       | `<quantity>` |
-| B2BMarkt  | `Europe`       | `<ProductCode>` | `<Stock>`    |
+## What Works Today
 
-Sync flow per supplier:
+Inventory sync is manual only. There are no cron jobs in this project.
 
-1. Download the XML feed over HTTPS.
-2. Parse it into a `{sku → stock}` map.
-3. Query Shopify for product IDs where `vendor` matches (exact).
-4. Paginate all product variants on the store.
-5. Intersect: keep variants whose product ID is in the vendor set.
-6. Match SKU → plan updates; drop missing, untracked, and unchanged.
-7. Apply `inventorySetQuantities` (field-level `@idempotent` directive,
-   `name: "available"`, `changeFromQuantity` guard) in batches of 50.
-8. Write a per-run log (JSON + readable text) to `logs/`.
+| Supplier | Shopify vendor | Product tag | SKU tag | Stock tag |
+| --- | --- | --- | --- | --- |
+| Megapap | `Mebelcenter` | `<product>` | `<model>` | `<quantity>` |
+| B2BMarkt | `Europe` | `<Product>` | `<ProductCode>` | `<Stock>` |
 
-## Setup
+The sync only updates Shopify inventory quantities. It does not change product
+titles, prices, vendors, tags, status, collections, handles, metafields, or
+product cleanup state.
+
+## Architecture
+
+- [sync.js](/Users/nikolaiv37/projects/mebelcenter-shopify/sync.js) is the CLI wrapper.
+- [lib/inventorySync.js](/Users/nikolaiv37/projects/mebelcenter-shopify/lib/inventorySync.js) contains the reusable inventory sync logic.
+- [lib/dashboardApp.js](/Users/nikolaiv37/projects/mebelcenter-shopify/lib/dashboardApp.js) contains the password-protected dashboard and API handler.
+- [dashboardServer.js](/Users/nikolaiv37/projects/mebelcenter-shopify/dashboardServer.js) runs the dashboard locally.
+- [api/index.js](/Users/nikolaiv37/projects/mebelcenter-shopify/api/index.js) is the Vercel serverless entrypoint.
+
+## Local Setup
 
 ```bash
-cp .env.example .env     # fill in the values
+cp .env.example .env
 npm install
+npm run dev
 ```
 
-Required `.env` values:
+Open `http://localhost:3000`, log in with `DASHBOARD_PASSWORD`, and start with a
+dry run.
 
-- `SHOPIFY_STORE_DOMAIN` — `mebel-center.myshopify.com`
-- `SHOPIFY_CLIENT_ID` — client ID of your Shopify custom app
-- `SHOPIFY_CLIENT_SECRET` — client secret of that same custom app
-  (starts with `shpss_`)
+## Dashboard
 
-The custom app needs these Admin API scopes: `read_products`, `read_inventory`,
-`read_locations`, `write_inventory`.
+The dashboard is available at `/dashboard` after login.
 
-No long-lived Admin API token is stored. At the start of every run the script
-calls `POST https://<shop>/admin/oauth/access_token` with
-`grant_type=client_credentials` and uses the short-lived token it receives for
-the rest of that run.
+Current controls:
 
-Optional `.env` values:
+- `Megapap Dry Run`
+- `Megapap Apply Sync`
+- `B2BMarkt Dry Run`
+- `B2BMarkt Apply Sync`
 
-- `SHOPIFY_API_VERSION` (default `2025-10`)
-- `SHOPIFY_LOCATION_ID` (auto-discovered if omitted)
-- `BATCH_SIZE` (default `50`)
-- `LOG_DIR` (default `./logs`)
-- `MEGAPAP_FEED_URL` / `B2BMARKT_FEED_URL` — override default feed URLs
+Apply actions require browser confirmation:
 
-## Run
+```text
+This will update Shopify inventory for [supplier]. Did you run a dry run first?
+```
+
+The dashboard displays run status, updated count, error count, skipped count,
+planned count, elapsed time, supplier, mode, finished time, logs, and recent
+inventory runs from the configured log folder.
+
+## CLI Usage
+
+Existing CLI behavior is preserved:
 
 ```bash
 npm run sync              # both suppliers
-npm run sync:megapap      # only Megapap → Mebelcenter
-npm run sync:b2bmarkt     # only B2BMarkt → Europe
+npm run sync:megapap      # only Megapap -> Mebelcenter
+npm run sync:b2bmarkt     # only B2BMarkt -> Europe
 
-# equivalent direct invocation
+npm run dry-run           # both suppliers, no writes
+npm run dry-run:megapap   # only Megapap, no writes
+npm run dry-run:b2bmarkt  # only B2BMarkt, no writes
+
+node sync.js
 node sync.js all
 node sync.js megapap
 node sync.js b2bmarkt
+node sync.js --dry-run
+node sync.js megapap --dry-run
+node sync.js b2bmarkt --dry-run
 ```
 
-Exit code `0` on full success, `1` if any row failed or a supplier crashed.
+Exit code `0` means full success. Exit code `1` means at least one supplier
+failed or returned row-level errors.
 
-## Cron
+## Required Environment Variables
 
-Run daily at 03:15 local time:
+Set these locally in `.env` and in Vercel Project Settings:
 
-```cron
-15 3 * * * cd /Users/nikolaiv37/projects/mebelcenter-shopify && /usr/local/bin/node sync.js all >> logs/cron.out 2>&1
+```env
+SHOPIFY_STORE_DOMAIN=mebel-center.myshopify.com
+SHOPIFY_CLIENT_ID=replace-with-shopify-custom-app-client-id
+SHOPIFY_CLIENT_SECRET=replace-with-shopify-custom-app-client-secret
+SHOPIFY_API_VERSION=2025-10
+OPENROUTER_API_KEY=replace-if-using-openrouter-tools
+DASHBOARD_PASSWORD=replace-with-a-strong-password
+LOG_DIR=./logs
+BATCH_SIZE=50
 ```
 
-Notes for cron:
+Optional:
 
-- Use absolute paths (cron's `PATH` is minimal).
-- `/usr/local/bin/node` — replace with `which node` on the box.
-- The script respects `.env`, so cron does not need env vars configured.
-- Each run also writes a structured log to `logs/<supplier>-<timestamp>.json`.
-
-## Log format
-
-`logs/<supplier>-<YYYY-MM-DDTHH-MM-SS>.json` example:
-
-```json
-{
-  "date": "2026-04-20T12:34:56.000Z",
-  "supplier": "megapap",
-  "vendor": "Mebelcenter",
-  "storeDomain": "mebel-center.myshopify.com",
-  "apiVersion": "2025-10",
-  "locationId": "gid://shopify/Location/104700412237",
-  "counts": {
-    "supplierSkus": 3572,
-    "vendorProducts": 3014,
-    "storeVariants": 11239,
-    "vendorVariants": 3014,
-    "planned": 1227,
-    "updated": 1227,
-    "errors": 0,
-    "skipped": { "notInXml": 79, "untracked": 0, "unchanged": 1708, "total": 1787 }
-  },
-  "elapsedSeconds": 87.4,
-  "errorDetail": []
-}
+```env
+DASHBOARD_PORT=3000
+SHOPIFY_LOCATION_ID=gid://shopify/Location/...
+MEGAPAP_FEED_URL=https://...
+B2BMARKT_FEED_URL=https://...
 ```
 
-A plain-text twin `logs/<...>.log` is also written for quick `tail`.
+The Shopify custom app needs these Admin API scopes:
+
+```text
+read_products
+read_inventory
+read_locations
+write_inventory
+```
+
+Price sync tooling, if used separately, also needs `write_products`.
+
+## Inventory Sync Behavior
+
+Per supplier:
+
+1. Download the supplier XML feed.
+2. Parse it into a `SKU -> stock` map using the existing supplier tag mapping.
+3. Query Shopify product IDs by vendor.
+4. Defensively keep only exact vendor matches.
+5. Paginate all Shopify variants.
+6. Match by trimmed Shopify variant SKU.
+7. Plan inventory quantity updates only for tracked, changed variants present in XML.
+8. Apply `inventorySetQuantities` with `compareQuantity` in batches.
+9. Write JSON and text logs.
+
+The mutation intentionally uses `compareQuantity`, not `changeFromQuantity`, and
+does not use `@idempotent`.
+
+## Logs
+
+Local runs write JSON and text logs to `LOG_DIR`, defaulting to `./logs`.
+
+On Vercel, serverless function storage is ephemeral. When `LOG_DIR` is relative,
+the dashboard writes logs to `/tmp/mebelcenter-logs` so each function invocation
+can write safely, but those files are not durable. Recent runs on Vercel should
+be treated as temporary visibility, not permanent audit history.
+
+For long-term hosted history, add a durable store later such as Supabase, Vercel
+Blob, or Postgres. This is intentionally not part of the current manual-only v1.
+
+## Vercel
+
+This project is Vercel-ready through [api/index.js](/Users/nikolaiv37/projects/mebelcenter-shopify/api/index.js)
+and [vercel.json](/Users/nikolaiv37/projects/mebelcenter-shopify/vercel.json).
+
+Vercel routes all requests to the dashboard handler so `/`, `/dashboard`, and
+all `/api/*` endpoints are protected by the same password gate.
+
+See [DEPLOYMENT.md](/Users/nikolaiv37/projects/mebelcenter-shopify/DEPLOYMENT.md)
+for exact deployment steps.
