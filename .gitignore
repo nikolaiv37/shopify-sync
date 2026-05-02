@@ -1,7 +1,13 @@
 node_modules/
 .env
 .env.*
-dist/
-build/
+__pycache__/
+*.pyc
 .DS_Store
+logs/
 *.log
+*.jsonl
+
+# optional (if you don't want data files tracked)
+# *.json
+# *.xml
