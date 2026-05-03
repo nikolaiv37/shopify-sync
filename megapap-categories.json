@@ -1,0 +1,281 @@
+{
+  "generatedAt": "2026-05-03T20:39:25.974Z",
+  "xmlSource": "/Users/nikolaiv37/projects/mebelcenter-shopify/megapap_en.xml",
+  "totalProducts": 3572,
+  "uniqueCategories": 68,
+  "noCategory": 0,
+  "categories": [
+    {
+      "category": "Indoor furniture > Dining set",
+      "count": 448
+    },
+    {
+      "category": "BLACK FRIDAY OFFERS",
+      "count": 292
+    },
+    {
+      "category": "Indoor furniture > Wardrobes",
+      "count": 237
+    },
+    {
+      "category": "Lighting > Ceiling lights",
+      "count": 237
+    },
+    {
+      "category": "Indoor furniture > TV furniture",
+      "count": 204
+    },
+    {
+      "category": "Indoor furniture > Coffee tables",
+      "count": 184
+    },
+    {
+      "category": "Indoor furniture > Bedside tables",
+      "count": 119
+    },
+    {
+      "category": "Indoor furniture > Tables",
+      "count": 119
+    },
+    {
+      "category": "Office furniture > Desks",
+      "count": 108
+    },
+    {
+      "category": "Decoration > Paintings",
+      "count": 108
+    },
+    {
+      "category": "Indoor furniture > Bookcases",
+      "count": 106
+    },
+    {
+      "category": "Lighting > Table lamps",
+      "count": 87
+    },
+    {
+      "category": "Indoor furniture > Auxiliary tables",
+      "count": 86
+    },
+    {
+      "category": "Indoor furniture > Kitchen furniture",
+      "count": 76
+    },
+    {
+      "category": "Indoor furniture > Shoe racks",
+      "count": 74
+    },
+    {
+      "category": "Indoor furniture > Buffets",
+      "count": 57
+    },
+    {
+      "category": "Indoor furniture > Bathroom furnishings",
+      "count": 56
+    },
+    {
+      "category": "Indoor furniture > Beds",
+      "count": 56
+    },
+    {
+      "category": "Indoor furniture > Entrance furniture",
+      "count": 51
+    },
+    {
+      "category": "Indoor furniture > Chairs - Dining armchairs",
+      "count": 51
+    },
+    {
+      "category": "Office furniture > Reception",
+      "count": 47
+    },
+    {
+      "category": "Indoor furniture > Home organizing furniture",
+      "count": 45
+    },
+    {
+      "category": "Indoor furniture > Wall shelves",
+      "count": 45
+    },
+    {
+      "category": "Indoor furniture > Consoles",
+      "count": 44
+    },
+    {
+      "category": "Lighting > Floor lamps",
+      "count": 41
+    },
+    {
+      "category": "Indoor furniture > Living room compositions",
+      "count": 39
+    },
+    {
+      "category": "Indoor furniture > Children's Room",
+      "count": 35
+    },
+    {
+      "category": "Indoor furniture > Mirrors",
+      "count": 33
+    },
+    {
+      "category": "Office furniture > Office chairs",
+      "count": 33
+    },
+    {
+      "category": "Indoor furniture > Monks - Wall hangers",
+      "count": 28
+    },
+    {
+      "category": "Other kinds > Linens > Duvet cover set",
+      "count": 27
+    },
+    {
+      "category": "Lighting > Children's ceiling lights",
+      "count": 24
+    },
+    {
+      "category": "Other kinds > Linens > Pillowcases",
+      "count": 24
+    },
+    {
+      "category": "Garden furniture > Director's chair cloths",
+      "count": 18
+    },
+    {
+      "category": "Indoor furniture > Chests of drawers",
+      "count": 18
+    },
+    {
+      "category": "Indoor furniture > Stool",
+      "count": 18
+    },
+    {
+      "category": "Other kinds > Household stuff > Staircases",
+      "count": 18
+    },
+    {
+      "category": "Decoration > Wall decoration",
+      "count": 17
+    },
+    {
+      "category": "Other kinds > Linens > Bed sheets",
+      "count": 17
+    },
+    {
+      "category": "Garden furniture > Garden - beach umbrellas",
+      "count": 16
+    },
+    {
+      "category": "Indoor furniture > Sofas - Bed",
+      "count": 16
+    },
+    {
+      "category": "Garden furniture > Garden tables",
+      "count": 16
+    },
+    {
+      "category": "Lighting > Wall lamps",
+      "count": 15
+    },
+    {
+      "category": "Garden furniture > Armchairs - Garden chairs",
+      "count": 14
+    },
+    {
+      "category": "Other kinds > Microelectric devices",
+      "count": 14
+    },
+    {
+      "category": "Indoor furniture > Bar stool",
+      "count": 13
+    },
+    {
+      "category": "Indoor furniture > Living room armchairs",
+      "count": 12
+    },
+    {
+      "category": "Indoor furniture > Dressing Tables",
+      "count": 12
+    },
+    {
+      "category": "Garden furniture > Garden dining set",
+      "count": 11
+    },
+    {
+      "category": "Other kinds > Household stuff > Bathroom shelves",
+      "count": 9
+    },
+    {
+      "category": "Garden furniture > Catering - Conference Furniture > Catering - Conference Tables",
+      "count": 9
+    },
+    {
+      "category": "Other kinds > Household stuff > Ironing boards",
+      "count": 8
+    },
+    {
+      "category": "Garden furniture > Garden stool",
+      "count": 8
+    },
+    {
+      "category": "Office furniture > Office libraries",
+      "count": 8
+    },
+    {
+      "category": "Indoor furniture > Sofas",
+      "count": 7
+    },
+    {
+      "category": "Decoration > General decoration",
+      "count": 7
+    },
+    {
+      "category": "Office furniture > Office cabinets",
+      "count": 7
+    },
+    {
+      "category": "Office furniture > Office drawers",
+      "count": 6
+    },
+    {
+      "category": "Indoor furniture > Corner sofas",
+      "count": 6
+    },
+    {
+      "category": "Indoor furniture > Armchairs - Bed",
+      "count": 6
+    },
+    {
+      "category": "Garden furniture > Umbrella stands",
+      "count": 5
+    },
+    {
+      "category": "Office furniture > Office spare parts",
+      "count": 4
+    },
+    {
+      "category": "Other kinds > Household stuff > Dish racks",
+      "count": 4
+    },
+    {
+      "category": "Garden furniture > Catering - Conference Furniture > Catering - Conference Chairs",
+      "count": 4
+    },
+    {
+      "category": "Other kinds > Household stuff > Clothes racks",
+      "count": 3
+    },
+    {
+      "category": "Office furniture > Guest tables",
+      "count": 2
+    },
+    {
+      "category": "Office furniture > Office wardrobes",
+      "count": 2
+    },
+    {
+      "category": "Other kinds > Household stuff > Shopping trolley",
+      "count": 1
+    }
+  ]
+}

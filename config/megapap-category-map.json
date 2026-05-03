@@ -1,0 +1,128 @@
+{
+  "Indoor furniture > Dining set": {
+    "default": {
+      "type": "Трапезни комплекти",
+      "tags": ["Трапезни комплекти"]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Wardrobes": {
+    "default": {
+      "type": "Гардероби",
+      "tags": ["Гардероби"]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Coffee tables": {
+    "default": {
+      "type": "Маси за хол",
+      "tags": ["Маси за хол"]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Beds": {
+    "default": {
+      "type": "Легла",
+      "tags": ["Легла"]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Bookcases": {
+    "default": {
+      "type": "Библиотеки",
+      "tags": ["Библиотеки"]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Bedside tables": {
+    "default": {
+      "type": "Нощни шкафчета",
+      "tags": ["Нощни шкафчета"]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Tables": {
+    "default": {
+      "type": "Маси",
+      "tags": ["Маси"]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Chairs - Dining armchairs": {
+    "default": {
+      "type": "Трапезни столове",
+      "tags": ["Столове и фотьойли"]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Shoe racks": {
+    "default": {
+      "type": "Етажерки за обувки",
+      "tags": ["Етажерки за обувки"]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Chests of drawers": {
+    "default": {
+      "type": "Скрини",
+      "tags": ["Скрини"]
+    },
+    "rules": []
+  },
+  "Indoor furniture > TV furniture": {
+    "default": {
+      "type": "ТВ мебели",
+      "tags": ["ТВ мебели"]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Children's Room": {
+    "default": {
+      "type": "Детска стая",
+      "tags": ["Детска стая"]
+    },
+    "rules": []
+  },
+  "Office furniture > Desks": {
+    "default": {
+      "type": "Бюра",
+      "tags": ["Бюра"]
+    },
+    "rules": []
+  },
+  "Office furniture > Office chairs": {
+    "default": {
+      "type": "Офис столове",
+      "tags": ["Офис столове"]
+    },
+    "rules": []
+  },
+  "Lighting > Ceiling lights": {
+    "default": {
+      "type": "Тавани лампи",
+      "tags": ["Осветление"]
+    },
+    "rules": []
+  },
+  "Lighting > Table lamps": {
+    "default": {
+      "type": "Нощни лампи",
+      "tags": ["Осветление"]
+    },
+    "rules": []
+  },
+  "Lighting > Floor lamps": {
+    "default": {
+      "type": "Подови лампи",
+      "tags": ["Осветление"]
+    },
+    "rules": []
+  },
+  "Garden furniture > Umbrella stands": {
+    "default": {
+      "type": "Градински мебели",
+      "tags": ["Градински мебели"]
+    },
+    "rules": []
+  }
+}
