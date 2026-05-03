@@ -239,6 +239,35 @@ def find_suspicious(value):
     return found
 
 
+def normalize_category_mapping(raw):
+    """Convert old or new format mapping to unified structure with 'default' and 'rules'."""
+    if not raw:
+        return None, "missing"
+    if "default" in raw:
+        mode = "rule" if "rules" in raw else "default"
+        return {
+            "default": raw.get("default", {"type": "", "tags": []}),
+            "rules": raw.get("rules", []),
+        }, mode
+    if "type" in raw or "tags" in raw:
+        return {
+            "default": {"type": raw.get("type", ""), "tags": raw.get("tags", [])},
+            "rules": [],
+        }, "old"
+    return None, "missing"
+
+
+def match_rule(rules, title, body, seo_title):
+    """Find first matching rule. Returns (rule, label) or (None, None)."""
+    search_text = " ".join(filter(None, [title, body, seo_title])).lower()
+    for rule in rules:
+        patterns = rule.get("match", [])
+        for pattern in patterns:
+            if pattern.lower() in search_text:
+                return rule, pattern
+    return None, None
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Clean B2BMarkt Shopify import CSV")
     parser.add_argument("--input", default="shopify-import.csv", help="Input CSV path (default: shopify-import.csv)")
@@ -312,6 +341,7 @@ def main():
     # Load category mapping
     category_map = {}
     category_mapping = None
+    mapping_mode = "missing"
     if args.category_map:
         try:
             with open(args.category_map, "r", encoding="utf-8") as f:
@@ -323,8 +353,14 @@ def main():
 
     if args.category and category_map:
         if args.category in category_map:
-            category_mapping = category_map[args.category]
-            print(f"Category mapping found: {args.category} → Type={category_mapping.get('type', '')}, Tags={category_mapping.get('tags', [])}")
+            raw = category_map[args.category]
+            category_mapping, mapping_mode = normalize_category_mapping(raw)
+            if category_mapping:
+                def_label = category_mapping["default"].get("type", "")
+                rules_count = len(category_mapping["rules"])
+                print(f"Category mapping loaded: {args.category} (mode={mapping_mode}, default_type={def_label}, rules={rules_count})")
+            else:
+                print(f"WARNING: Category '{args.category}' has no usable mapping in {args.category_map}")
         else:
             print(f"WARNING: Category '{args.category}' not found in mapping file {args.category_map}")
             print(f"  Known categories: {', '.join(category_map.keys())}")
@@ -390,12 +426,28 @@ def main():
 
             # Step 6: Apply category mapping to Type and Tags on product rows
             if idx == 0 and category_mapping:
-                if "type" in category_mapping:
-                    new_row["Type"] = category_mapping["type"]
-                if "tags" in category_mapping and category_mapping["tags"]:
-                    new_row["Tags"] = ", ".join(category_mapping["tags"])
+                rules = category_mapping.get("rules", [])
+                default = category_mapping.get("default", {})
+                if rules:
+                    title_for_match = new_row.get("Title", "")
+                    body_for_match = new_row.get("Body (HTML)", "")
+                    seo_for_match = new_row.get("SEO Title", "")
+                    matched_rule, matched_pattern = match_rule(rules, title_for_match, body_for_match, seo_for_match)
+                    if matched_rule:
+                        new_row["Type"] = matched_rule.get("type", default.get("type", ""))
+                        tags = matched_rule.get("tags", default.get("tags", []))
+                        new_row["Tags"] = ", ".join(tags) if tags else ""
+                    else:
+                        new_row["Type"] = default.get("type", "")
+                        tags = default.get("tags", [])
+                        new_row["Tags"] = ", ".join(tags) if tags else ""
                 else:
-                    new_row["Tags"] = ""
+                    if default.get("type"):
+                        new_row["Type"] = default["type"]
+                    if default.get("tags"):
+                        new_row["Tags"] = ", ".join(default["tags"])
+                    else:
+                        new_row["Tags"] = ""
 
             output_rows.append(new_row)
 
@@ -470,13 +522,19 @@ def main():
     # Category mapping summary
     if args.category:
         print(f"  Category:                {args.category}")
+        print(f"  Mapping mode:            {mapping_mode}")
         if category_mapping:
-            print(f"  Mapped Type:             {category_mapping.get('type', '(none)')}")
-            print(f"  Mapped Tags:             {', '.join(category_mapping.get('tags', []))}")
+            def_type = category_mapping["default"].get("type", "(none)")
+            def_tags = ", ".join(category_mapping["default"].get("tags", []))
+            print(f"  Default Type:            {def_type}")
+            print(f"  Default Tags:            {def_tags}")
+            if category_mapping["rules"]:
+                print(f"  Rules count:             {len(category_mapping['rules'])}")
         else:
             print(f"  ⚠ No mapping found — Type/Tags not overridden")
     else:
         print(f"  Category:                (not specified)")
+        print(f"  Mapping mode:            (none)")
     print()
 
     print(f"  Total rows:              {total_rows}")
@@ -551,6 +609,21 @@ def main():
         print(f"  ✓ No Greek characters in text fields")
     print()
 
+    # Greek check specifically on Type and Tags
+    greek_type_tags = []
+    for i, r in enumerate(output_rows):
+        if r.get("Variant SKU", "").strip():
+            for field in ["Type", "Tags"]:
+                if has_greek(r.get(field, "")):
+                    greek_type_tags.append((i, field, r.get(field, "")[:80]))
+    if greek_type_tags:
+        print(f"  ⚠ Greek in Type/Tags: {len(greek_type_tags)}")
+        for idx, field, snippet in greek_type_tags:
+            print(f"    Row {idx}, '{field}': {snippet}...")
+    else:
+        print(f"  ✓ No Greek in Type/Tags")
+    print()
+
     if suspicious_rows:
         print(f"  ⚠ Suspicious phrases: {len(suspicious_rows)}")
         for idx, field, phrase, snippet in suspicious_rows:
@@ -571,8 +644,16 @@ def main():
     for h, count in handle_counts.items():
         sku = next((r.get("Variant SKU", "").strip() for r in output_rows if r.get("Handle") == h and r.get("Variant SKU", "").strip()), "—")
         title = next((r.get("Title", "").strip() for r in output_rows if r.get("Handle") == h and r.get("Title", "").strip()), "—")
+        typ = next((r.get("Type", "").strip() for r in output_rows if r.get("Handle") == h), "—")
+        tags = next((r.get("Tags", "").strip() for r in output_rows if r.get("Handle") == h), "—")
         img_count = count - 1
-        print(f"    {h}  SKU={sku}  title={title[:50]}  images={img_count}")
+        rule_label = ""
+        if category_mapping and category_mapping["rules"]:
+            body = next((r.get("Body (HTML)", "") for r in output_rows if r.get("Handle") == h), "")
+            seo = next((r.get("SEO Title", "") for r in output_rows if r.get("Handle") == h), "")
+            _, matched_pattern = match_rule(category_mapping["rules"], title, body, seo)
+            rule_label = f"  rule='{matched_pattern}'" if matched_pattern else "  [default]"
+        print(f"    {h}  SKU={sku}  title={title[:50]}  type={typ}  tags={tags}{rule_label}  images={img_count}")
     print()
 
     has_issues = greek_rows or hm_rows or bad_image_rows

@@ -8,6 +8,16 @@ logs/
 *.log
 *.jsonl
 
+# Generated reports and imports (do not commit)
+reports/*.csv
+reports/*.json
+missing-*.csv
+missing-*.json
+translated-*.csv
+translated-*.json
+*-shopify-import.csv
+*-shopify-import-clean.csv
+
 # optional (if you don't want data files tracked)
 # *.json
 # *.xml

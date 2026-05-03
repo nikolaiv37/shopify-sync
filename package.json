@@ -30,7 +30,8 @@
     "pipeline": "bash scripts/run_b2bmarkt_pipeline.sh",
     "categories:b2bmarkt": "node scripts/list_b2bmarkt_categories.js --xml=b2bmarkt_updated.xml",
     "clean:kids": "python3 scripts/clean_b2bmarkt_import.py --input shopify-kids-room-import.csv",
-    "pipeline:kids": "bash scripts/run_kids_room_pipeline.sh"
+    "pipeline:kids": "bash scripts/run_kids_room_pipeline.sh",
+    "audit:europe:not-in-feed": "node scripts/audit_europe_not_in_feed.js --xml=b2bmarkt_updated.xml"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
