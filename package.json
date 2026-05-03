@@ -24,10 +24,13 @@
     "prices:b2b": "node update-prices.js b2bmarkt",
     "prices:megapap": "node update-prices.js megapap",
     "export:missing": "node export-missing-products.js",
-    "export:batch": "node export-missing-products.js --out-base=missing-products-kids-room-batch-1 --skip=0 --limit=20",
-    "translate": "python3 translate_b2bmarkt_missing.py --input missing-products-kids-room.csv --model openai/gpt-4.1-mini --fallback-model openai/gpt-4o-mini --max-concurrency 1",
-    "clean:csv": "python3 scripts/clean_kids_room_import.py",
-    "pipeline": "bash scripts/run_kids_room_pipeline.sh"
+    "export:batch": "node export-missing-products.js --out-base=missing-products-batch-1 --skip=0 --limit=20",
+    "translate": "python3 translate_b2bmarkt_missing.py --input missing-products.csv --out-base translated-products --model openai/gpt-4.1-mini --fallback-model openai/gpt-4o-mini --max-concurrency 1",
+    "clean:csv": "python3 scripts/clean_b2bmarkt_import.py",
+    "pipeline": "bash scripts/run_b2bmarkt_pipeline.sh",
+    "categories:b2bmarkt": "node scripts/list_b2bmarkt_categories.js --xml=b2bmarkt_updated.xml",
+    "clean:kids": "python3 scripts/clean_b2bmarkt_import.py --input shopify-kids-room-import.csv",
+    "pipeline:kids": "bash scripts/run_kids_room_pipeline.sh"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

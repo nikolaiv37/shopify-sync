@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 #
-# Pipeline: Export missing B2BMarkt kids room products → translate → clean Shopify CSV.
+# Pipeline: Export missing B2BMarkt products → translate → clean Shopify CSV.
 #
 # Usage:
-#   ./scripts/run_kids_room_pipeline.sh              # full export
-#   ./scripts/run_kids_room_pipeline.sh --limit 20   # first 20 products
-#   ./scripts/run_kids_room_pipeline.sh --skip 20 --limit 20  # next 20
+#   ./scripts/run_b2bmarkt_pipeline.sh                           # full export
+#   ./scripts/run_b2bmarkt_pipeline.sh --limit 20                # first 20 products
+#   ./scripts/run_b2bmarkt_pipeline.sh --skip 20 --limit 20      # next 20
+#   ./scripts/run_b2bmarkt_pipeline.sh --category="Κρεβάτια"     # different category
 #
 # Safe: read-only export, no Shopify writes, no inventory mutations.
 
@@ -13,7 +14,7 @@ set -euo pipefail
 
 XML="${XML_FILE:-b2bmarkt_updated.xml}"
 CATEGORY="${CATEGORY:-Παιδικό δωμάτιο}"
-OUT_BASE="${OUT_BASE:-missing-products-kids-room}"
+OUT_BASE="${OUT_BASE:-missing-products}"
 SKIP="${SKIP:-0}"
 LIMIT="${LIMIT:-}"
 MODEL="${MODEL:-openai/gpt-4.1-mini}"
@@ -37,7 +38,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "=========================================="
-echo "  Kids Room Import Pipeline"
+echo "  B2BMarkt Import Pipeline"
 echo "=========================================="
 echo "  XML:        $XML"
 echo "  Category:   $CATEGORY"
@@ -79,12 +80,12 @@ if [[ ! -f "$SHOPIFY_CSV" ]]; then
   echo "ERROR: $SHOPIFY_CSV not found after translation."
   exit 1
 fi
-CMD_C="python3 scripts/clean_kids_room_import.py --input=$SHOPIFY_CSV --weight-source=${OUT_BASE}.json"
+CMD_C="python3 scripts/clean_b2bmarkt_import.py --input=$SHOPIFY_CSV --weight-source=${OUT_BASE}.json"
 echo "  $CMD_C"
 eval "$CMD_C"
 echo
 
 echo "=========================================="
 echo "  Pipeline complete."
-echo "  Final output: shopify-kids-room-import-clean.csv"
+echo "  Final output: ${OUT_BASE}-shopify-import-clean.csv"
 echo "=========================================="

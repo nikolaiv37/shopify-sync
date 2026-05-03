@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-QA/cleanup script for shopify-kids-room-import.csv.
+QA/cleanup script for B2BMarkt Shopify import CSVs.
 
-Reads shopify-kids-room-import.csv, applies text corrections including
-Bulgarian grammar fixes, writes shopify-kids-room-import-clean.csv in
-proper Shopify multi-image format, and prints a QA report.
+Reads a shopify-import CSV (any category), applies text corrections including
+Bulgarian grammar fixes, writes a cleaned CSV in proper Shopify multi-image
+format, and prints a QA report.
 
 Shopify image-row format:
   - First row per Handle: full product + variant + SEO + status + Image 1
@@ -13,18 +13,20 @@ Shopify image-row format:
 Local-only. Does not touch Shopify, inventory, or dashboard code.
 
 Usage:
-    python3 scripts/clean_kids_room_import.py
+    python3 scripts/clean_b2bmarkt_import.py
+    python3 scripts/clean_b2bmarkt_import.py --input=shopify-saloni-batch-1.csv
+    python3 scripts/clean_b2bmarkt_import.py --input=shopify-import.csv --weight-source=translated-products.json
+
+Input default:  shopify-import.csv
+Output default: <input-base>-clean.csv  (e.g. shopify-saloni-batch-1-clean.csv)
 """
 
+import argparse
 import csv
 import json
 import re
 import sys
 from collections import Counter, OrderedDict
-
-INPUT = "shopify-kids-room-import.csv"
-OUTPUT = "shopify-kids-room-import-clean.csv"
-WEIGHT_SOURCE = "translated-kids-room-products.json"
 
 GREEK_RE = re.compile(r"[\u0370-\u03FF\u1F00-\u1FFF]")
 HM_CODE_RE = re.compile(r"HM\d+(?:\.\d+)?")
@@ -61,7 +63,6 @@ REPLACEMENTS = [
 ]
 
 # Bulgarian grammar fixes: (pattern, replacement)
-# Ordered so longer/more specific patterns come first.
 GRAMMAR_FIXES = [
     ("Детско трапезарно масичка", "Детска масичка"),
     ("Детски етажерка", "Детска етажерка"),
@@ -99,7 +100,6 @@ FIELDS_CLEANED = {
 
 B2BMARKT_PRICE_MULTIPLIER = 3.10
 
-# Suspicious phrases that indicate bad translation (not auto-fixed, just flagged)
 SUSPICIOUS_PHRASES = [
     "Детски етажерка",
     "Детско масичка",
@@ -109,8 +109,6 @@ SUSPICIOUS_PHRASES = [
     "Симида",
 ]
 
-# Regex for mixed Latin/Cyrillic words that look like translation artifacts
-# Matches a word with both Cyrillic and Latin letters
 MIXED_SCRIPT_RE = re.compile(
     r"(?=[\u0400-\u04FF]*[A-Za-z])"
     r"(?=[A-Za-z]*[\u0400-\u04FF])"
@@ -215,21 +213,65 @@ def find_suspicious(value):
     for phrase in SUSPICIOUS_PHRASES:
         if phrase in value:
             found.append(phrase)
-    # Check for mixed script words
     mixed = MIXED_SCRIPT_RE.findall(value)
     for word in mixed:
         found.append(f"mixed-script:{word}")
     return found
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Clean B2BMarkt Shopify import CSV")
+    parser.add_argument("--input", default="shopify-import.csv", help="Input CSV path (default: shopify-import.csv)")
+    parser.add_argument("--weight-source", default=None, help="JSON file with weight/price data (default: auto-detect)")
+    return parser.parse_args()
+
+
+def derive_output_path(input_path):
+    """Derive output path: <base>-clean.csv"""
+    base = input_path
+    if base.endswith(".csv"):
+        base = base[:-4]
+    return f"{base}-clean.csv"
+
+
+def auto_detect_weight_source(input_path):
+    """Try to find a matching translated JSON file."""
+    import os
+    candidates = [
+        "translated-kids-room-products.json",
+        "translated-products.json",
+    ]
+    # Try to derive from input name
+    base = os.path.basename(input_path)
+    if base.endswith(".csv"):
+        base = base[:-4]
+    # e.g. shopify-saloni-batch-1 → translated-saloni-batch-1.json
+    if base.startswith("shopify-"):
+        candidates.insert(0, f"translated-{base[8:]}.json")
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+    return None
+
+
 def main():
+    args = parse_args()
+    input_path = args.input
+    output_path = derive_output_path(input_path)
+
+    weight_source = args.weight_source
+    if not weight_source:
+        weight_source = auto_detect_weight_source(input_path)
+        if not weight_source:
+            print(f"WARNING: No weight/price source found. Prices will use CSV values as-is.")
+
     try:
-        with open(INPUT, "r", encoding="utf-8") as f:
+        with open(input_path, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             fieldnames = list(reader.fieldnames)
             rows = list(reader)
     except FileNotFoundError:
-        print(f"ERROR: {INPUT} not found. Run translate_b2bmarkt_missing.py first.")
+        print(f"ERROR: {input_path} not found.")
         sys.exit(1)
 
     if not fieldnames:
@@ -240,7 +282,10 @@ def main():
         idx = fieldnames.index("Variant Weight Unit") + 1
         fieldnames.insert(idx, "Variant Grams")
 
-    weights, wholesale_prices = load_product_data(WEIGHT_SOURCE)
+    weights = {}
+    wholesale_prices = {}
+    if weight_source:
+        weights, wholesale_prices = load_product_data(weight_source)
 
     # Group rows by Handle, preserving order
     groups = OrderedDict()
@@ -303,7 +348,7 @@ def main():
             output_rows.append(new_row)
 
     # Write output
-    with open(OUTPUT, "w", encoding="utf-8", newline="") as f:
+    with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(output_rows)
@@ -366,7 +411,7 @@ def main():
                     bad_image_rows.append((i, field, r.get(field, "")[:60]))
 
     print("=" * 60)
-    print("  QA REPORT: shopify-kids-room-import-clean.csv")
+    print(f"  QA REPORT: {output_path}")
     print("=" * 60)
     print()
     print(f"  Total rows:              {total_rows}")
@@ -452,7 +497,7 @@ def main():
         print("  RESULT: review before import")
     print("-" * 60)
     print()
-    print(f"  Output: {OUTPUT}")
+    print(f"  Output: {output_path}")
 
 
 if __name__ == "__main__":

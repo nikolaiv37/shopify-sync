@@ -480,14 +480,15 @@ def build_shopify_csv_row(translated):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Translate B2BMarkt missing kids room products to Bulgarian")
-    parser.add_argument("--input", required=True, help="Input CSV file (missing-products-kids-room.csv)")
+    parser = argparse.ArgumentParser(description="Translate B2BMarkt missing products to Bulgarian")
+    parser.add_argument("--input", required=True, help="Input CSV file (missing-products CSV)")
     parser.add_argument("--model", default="google/gemma-4-31b-it", help="OpenRouter model")
     parser.add_argument("--fallback-model", default="openai/gpt-4.1-mini", help="Fallback model")
     parser.add_argument("--max-concurrency", type=int, default=1, help="Max concurrent translations")
     parser.add_argument("--max-retries", type=int, default=5, help="Max retries per request")
     parser.add_argument("--retry-backoff", type=float, default=1.5, help="Retry backoff multiplier")
     parser.add_argument("--limit-products", type=int, help="Limit number of products to process")
+    parser.add_argument("--out-base", default="translated-kids-room-products", help="Output base name (default: translated-kids-room-products)")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
@@ -548,16 +549,17 @@ def main():
     export_data = {
         "exported_at": timestamp_now(),
         "source": args.input,
-        "category": "Детска стая",
         "total_translated": len(translated_products),
         "products": translated_products,
     }
 
-    with open("translated-kids-room-products.json", "w", encoding="utf-8") as f:
+    json_path = f"{args.out_base}.json"
+    with open(json_path, "w", encoding="utf-8") as f:
         json.dump(export_data, f, ensure_ascii=False, indent=2)
-    print("Exported: translated-kids-room-products.json")
+    print(f"Exported: {json_path}")
 
-    with open("translated-kids-room-products.csv", "w", encoding="utf-8", newline="") as f:
+    csv_path = f"{args.out_base}.csv"
+    with open(csv_path, "w", encoding="utf-8", newline="") as f:
         fieldnames = ["sku", "title_original", "title_bg", "description_original", "description_bg", "seo_title_bg", "seo_description_bg", "categories_bg", "tags", "images", "price_retail", "price_market", "stock", "barcode", "dimensions"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -566,19 +568,20 @@ def main():
             row["images"] = "; ".join(p.get("images", []))
             row["tags"] = ", ".join(p.get("tags", []))
             writer.writerow(row)
-    print("Exported: translated-kids-room-products.csv")
+    print(f"Exported: {csv_path}")
 
     shopify_rows = []
     for p in translated_products:
         shopify_rows.extend(build_shopify_csv_row(p))
 
     shopify_fieldnames = ["Handle", "Title", "Body (HTML)", "Vendor", "Product Category", "Type", "Tags", "Published", "Option1 Name", "Option1 Value", "Variant SKU", "Variant Inventory Tracker", "Variant Inventory Qty", "Variant Inventory Policy", "Variant Fulfillment Service", "Variant Price", "Variant Compare At Price", "Variant Requires Shipping", "Variant Taxable", "Variant Barcode", "Image Src", "Image Position", "Image Alt Text", "Gift Card", "SEO Title", "SEO Description", "Variant Weight Unit", "Status"]
-    with open("shopify-kids-room-import.csv", "w", encoding="utf-8", newline="") as f:
+    shopify_path = f"{args.out_base}-shopify-import.csv"
+    with open(shopify_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=shopify_fieldnames)
         writer.writeheader()
         for row in shopify_rows:
             writer.writerow(row)
-    print("Exported: shopify-kids-room-import.csv")
+    print(f"Exported: {shopify_path}")
 
     print("\nDone!")
 
