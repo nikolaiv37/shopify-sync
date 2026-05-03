@@ -54,12 +54,14 @@ REPLACEMENTS = [
     ("[L] Κουκέτες", "Детски двуетажни легла"),
     ("[L] Καρεκλάκια", "Детски столчета"),
     ("[L] Τραπέζια", "Детски маси"),
+    ("[L] Σαλόνια - γωνίες", "Ъглови дивани"),
     ("Εσωτερικός χώρος", "Мебели"),
     ("Κρεβάτια", "Детски легла"),
     ("Παιδικά πακέτα", "Детски комплекти"),
     ("Κουκέτες", "Детски двуетажни легла"),
     ("Καρεκλάκια", "Детски столчета"),
     ("Τραπέζια", "Детски маси"),
+    ("Σαλόνια - γωνίες", "Ъглови дивани"),
 ]
 
 # Bulgarian grammar fixes: (pattern, replacement)
@@ -80,6 +82,24 @@ TYPE_OVERRIDES = {
     "Детски столчета": "Детски столчета",
     "Детски маси": "Детски маси",
     "Мебели": "Мебели",
+    "Ъглови дивани": "Ъглови дивани",
+}
+
+# Map Type values to appropriate Tags
+TYPE_TO_TAG = {
+    "Детски легла": "Детски легла",
+    "Детски комплекти": "Детски комплекти",
+    "Детски двуетажни легла": "Детски двуетажни легла",
+    "Детски столчета": "Детски столчета",
+    "Детски маси": "Детски маси",
+    "Мебели": "Мебели",
+    "Ъглови дивани": "Ъглови дивани",
+    "Легла": "Легла",
+    "Маси": "Маси",
+    "Столове и фотьойли": "Столове и фотьойли",
+    "Осветление": "Осветление",
+    "Офис мебели": "Офис мебели",
+    "Декорация": "Декорация",
 }
 
 FIELDS_BLANK_ON_IMAGE_ROWS = {
@@ -223,6 +243,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Clean B2BMarkt Shopify import CSV")
     parser.add_argument("--input", default="shopify-import.csv", help="Input CSV path (default: shopify-import.csv)")
     parser.add_argument("--weight-source", default=None, help="JSON file with weight/price data (default: auto-detect)")
+    parser.add_argument("--category", default=None, help="B2BMarkt category name for mapping (e.g. Σαλόνια - γωνίες)")
+    parser.add_argument("--category-map", default=None, help="Path to category mapping JSON file")
     return parser.parse_args()
 
 
@@ -287,6 +309,27 @@ def main():
     if weight_source:
         weights, wholesale_prices = load_product_data(weight_source)
 
+    # Load category mapping
+    category_map = {}
+    category_mapping = None
+    if args.category_map:
+        try:
+            with open(args.category_map, "r", encoding="utf-8") as f:
+                category_map = json.load(f)
+        except FileNotFoundError:
+            print(f"WARNING: Category map file not found: {args.category_map}")
+        except json.JSONDecodeError as e:
+            print(f"WARNING: Invalid JSON in category map: {e}")
+
+    if args.category and category_map:
+        if args.category in category_map:
+            category_mapping = category_map[args.category]
+            print(f"Category mapping found: {args.category} → Type={category_mapping.get('type', '')}, Tags={category_mapping.get('tags', [])}")
+        else:
+            print(f"WARNING: Category '{args.category}' not found in mapping file {args.category_map}")
+            print(f"  Known categories: {', '.join(category_map.keys())}")
+            print(f"  Tags will be left empty. Type will use existing CSV value.")
+
     # Group rows by Handle, preserving order
     groups = OrderedDict()
     for row in rows:
@@ -344,6 +387,15 @@ def main():
                     val = ""
 
                 new_row[field] = val
+
+            # Step 6: Apply category mapping to Type and Tags on product rows
+            if idx == 0 and category_mapping:
+                if "type" in category_mapping:
+                    new_row["Type"] = category_mapping["type"]
+                if "tags" in category_mapping and category_mapping["tags"]:
+                    new_row["Tags"] = ", ".join(category_mapping["tags"])
+                else:
+                    new_row["Tags"] = ""
 
             output_rows.append(new_row)
 
@@ -414,6 +466,19 @@ def main():
     print(f"  QA REPORT: {output_path}")
     print("=" * 60)
     print()
+
+    # Category mapping summary
+    if args.category:
+        print(f"  Category:                {args.category}")
+        if category_mapping:
+            print(f"  Mapped Type:             {category_mapping.get('type', '(none)')}")
+            print(f"  Mapped Tags:             {', '.join(category_mapping.get('tags', []))}")
+        else:
+            print(f"  ⚠ No mapping found — Type/Tags not overridden")
+    else:
+        print(f"  Category:                (not specified)")
+    print()
+
     print(f"  Total rows:              {total_rows}")
     print(f"  Unique handles:          {len(unique_handles)}")
     print(f"  Rows with Variant SKU:   {rows_with_sku}")
@@ -426,6 +491,30 @@ def main():
     print(f"  SKUs with leading zero:  {len(leading_zero_skus)} → {', '.join(leading_zero_skus)}")
     print()
     print(f"  Status values:           {dict(status_values)}")
+    print()
+
+    # Tags and Type analysis (product rows only)
+    product_tags = Counter()
+    product_types = Counter()
+    rows_with_detska_staya = 0
+    for r in output_rows:
+        if r.get("Variant SKU", "").strip():
+            tag = r.get("Tags", "").strip()
+            typ = r.get("Type", "").strip()
+            if tag:
+                product_tags[tag] += 1
+            if typ:
+                product_types[typ] += 1
+            if tag == "Детска стая" or typ == "Детска стая":
+                rows_with_detska_staya += 1
+
+    print(f"  Product rows:            {len(product_tags)}")
+    print(f"  Unique Tags:             {dict(product_tags)}")
+    print(f"  Unique Types:            {dict(product_types)}")
+    if rows_with_detska_staya > 0:
+        print(f"  ⚠ Rows with 'Детска стая': {rows_with_detska_staya}")
+    else:
+        print(f"  ✓ No 'Детска стая' in Tags or Type")
     print()
 
     # Grammar fixes summary

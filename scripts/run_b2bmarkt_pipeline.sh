@@ -80,7 +80,7 @@ if [[ ! -f "$SHOPIFY_CSV" ]]; then
   echo "ERROR: $SHOPIFY_CSV not found after translation."
   exit 1
 fi
-CMD_C="python3 scripts/clean_b2bmarkt_import.py --input=$SHOPIFY_CSV --weight-source=${OUT_BASE}.json"
+CMD_C="python3 scripts/clean_b2bmarkt_import.py --input=$SHOPIFY_CSV --weight-source=${OUT_BASE}.json --category=\"$CATEGORY\" --category-map=config/b2bmarkt-category-map.json"
 echo "  $CMD_C"
 eval "$CMD_C"
 echo

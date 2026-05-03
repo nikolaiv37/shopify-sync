@@ -37,6 +37,23 @@ GREEK_RE = re.compile(r"[\u0391-\u03C9]")
 CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
 ALLOW_LATIN = {"PVC", "MDF", "E1", "K/D", "YES", "NO", "LED", "HM", "SKU"}
 
+# Map B2BMarkt Greek category names to Bulgarian tags/types
+CATEGORY_TAG_MAP = {
+    "Παιδικό δωμάτιο": "Детска стая",
+    "Σαλόνια - γωνίες": "Ъглови дивани",
+    "Κρεβάτια": "Легла",
+    "Τραπέζια": "Маси",
+    "Καρέκλες - Πολυθρόνες": "Столове и фотьойли",
+    "Φωτισμός": "Осветление",
+    "Έπιπλα γραφείου": "Офис мебели",
+    "Διακόσμηση": "Декорация",
+}
+
+
+def resolve_category_tag(greek_category, fallback=""):
+    """Map a Greek B2BMarkt category to a Bulgarian tag. Returns empty string if unknown."""
+    return CATEGORY_TAG_MAP.get(greek_category, fallback)
+
 
 def contains_greek(text):
     return bool(text and GREEK_RE.search(text))
@@ -339,7 +356,7 @@ class OpenRouterTranslator:
         return "\n".join(base)
 
 
-def translate_product(translator, product, idx):
+def translate_product(translator, product, idx, category_tag=""):
     sku = product.get("sku", "")
     title = product.get("title", "")
     description = product.get("description", "")
@@ -380,7 +397,7 @@ def translate_product(translator, product, idx):
     for i, img in enumerate(images[:5], 1):
         alt_texts[img] = results.get(f"alt_{i}", f"{bg_title} - снимка {i}")
     bg_categories = categories.replace("Παιδικό δωμάτιο", "Детска стая")
-    tags = ["Детска стая"]
+    tags = [category_tag] if category_tag else []
     return {
         "sku": sku,
         "title_original": title,
@@ -489,6 +506,7 @@ def main():
     parser.add_argument("--retry-backoff", type=float, default=1.5, help="Retry backoff multiplier")
     parser.add_argument("--limit-products", type=int, help="Limit number of products to process")
     parser.add_argument("--out-base", default="translated-kids-room-products", help="Output base name (default: translated-kids-room-products)")
+    parser.add_argument("--category", default="", help="B2BMarkt category name (e.g. Παιδικό δωμάτιο, Σαλόνια - γωνίες)")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
@@ -524,11 +542,17 @@ def main():
 
     print(f"Products to translate: {len(products)}")
 
+    category_tag = resolve_category_tag(args.category)
+    if category_tag:
+        print(f"Category tag: {category_tag}")
+    else:
+        print("Category tag: (none — Tags will be empty)")
+
     translated_products = []
     errors_log = []
 
     with ThreadPoolExecutor(max_workers=args.max_concurrency) as executor:
-        futures = {executor.submit(translate_product, translator, p, idx): (idx, p) for idx, p in enumerate(products)}
+        futures = {executor.submit(translate_product, translator, p, idx, category_tag): (idx, p) for idx, p in enumerate(products)}
         for future in as_completed(futures):
             idx, product = futures[future]
             try:
