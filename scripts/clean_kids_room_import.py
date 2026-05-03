@@ -48,10 +48,25 @@ REPLACEMENTS = [
     ("[L] Εσωτερικός χώρος", "Мебели"),
     ("[L] Κρεβάτια", "Детски легла"),
     ("[L] Παιδικά πακέτα", "Детски комплекти"),
+    ("[L] Κουκέτες", "Детски двуетажни легла"),
+    ("[L] Καρεκλάκια", "Детски столчета"),
+    ("[L] Τραπέζια", "Детски маси"),
     ("Εσωτερικός χώρος", "Мебели"),
     ("Κρεβάτια", "Детски легла"),
     ("Παιδικά πακέτα", "Детски комплекти"),
+    ("Κουκέτες", "Детски двуетажни легла"),
+    ("Καρεκλάκια", "Детски столчета"),
+    ("Τραπέζια", "Детски маси"),
 ]
+
+TYPE_OVERRIDES = {
+    "Детски легла": "Детски легла",
+    "Детски комплекти": "Детски комплекти",
+    "Детски двуетажни легла": "Детски двуетажни легла",
+    "Детски столчета": "Детски столчета",
+    "Детски маси": "Детски маси",
+    "Мебели": "Мебели",
+}
 
 FIELDS_BLANK_ON_IMAGE_ROWS = {
     "Title", "Body (HTML)", "Vendor", "Product Category", "Type", "Tags",
@@ -70,23 +85,50 @@ FIELDS_CLEANED = {
 }
 
 
-def load_weights(path):
-    """Load weight_kg per SKU from the translated JSON."""
+B2BMARKT_PRICE_MULTIPLIER = 3.10
+
+
+def load_product_data(path):
+    """Load weight_kg and raw wholesale_price per SKU from the translated JSON."""
     weights = {}
+    wholesale_prices = {}
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         for p in data.get("products", []):
             sku = p.get("sku", "")
+            if not sku:
+                continue
             wg = p.get("weight_kg", "")
-            if sku and wg:
+            if wg:
                 try:
                     weights[sku] = int(float(wg) * 1000)
                 except (ValueError, TypeError):
                     pass
+            wp = p.get("price_wholesale", "")
+            if wp:
+                try:
+                    wholesale_prices[sku] = float(wp)
+                except (ValueError, TypeError):
+                    pass
     except FileNotFoundError:
         pass
-    return weights
+    return weights, wholesale_prices
+
+
+def clean_type(value):
+    """Clean Type field: apply replacements, strip [L] prefix, map to known Bulgarian types."""
+    if not value:
+        return value
+    result = value
+    for old, new in REPLACEMENTS:
+        result = result.replace(old, new)
+    # Strip any remaining [L] prefix
+    result = re.sub(r"\[L\]\s*", "", result).strip()
+    # Map to known types if it matches
+    if result in TYPE_OVERRIDES:
+        return TYPE_OVERRIDES[result]
+    return result
 
 
 def clean_text(value):
@@ -143,8 +185,8 @@ def main():
         idx = fieldnames.index("Variant Weight Unit") + 1
         fieldnames.insert(idx, "Variant Grams")
 
-    # Load weights
-    weights = load_weights(WEIGHT_SOURCE)
+    # Load weights and wholesale prices
+    weights, wholesale_prices = load_product_data(WEIGHT_SOURCE)
 
     # Group rows by Handle, preserving order
     groups = OrderedDict()
@@ -163,9 +205,18 @@ def main():
                 if field == "Variant Grams":
                     val = ""
 
+                # Override Variant Price with wholesale × multiplier on product rows
+                if idx == 0 and field == "Variant Price":
+                    sku = row.get("Variant SKU", "").strip()
+                    if sku in wholesale_prices:
+                        val = f"{wholesale_prices[sku] * B2BMARKT_PRICE_MULTIPLIER:.2f}"
+
                 # Step 1: clean text fields
                 if field in FIELDS_CLEANED:
-                    val = clean_text(val)
+                    if field == "Type":
+                        val = clean_type(val)
+                    else:
+                        val = clean_text(val)
 
                 # Step 2: remove HM codes from customer-facing fields
                 if field == "Body (HTML)":
@@ -261,13 +312,16 @@ def main():
     print(f"  Status values:           {dict(status_values)}")
     print()
 
-    # Weight details
-    print("  Product weights:")
+    # Weight and price details
+    print("  Product weights and prices:")
     for h, count in handle_counts.items():
         sku = next((r.get("Variant SKU", "").strip() for r in output_rows if r.get("Handle") == h and r.get("Variant SKU", "").strip()), "")
         grams = next((r.get("Variant Grams", "").strip() for r in output_rows if r.get("Handle") == h and r.get("Variant SKU", "").strip()), "")
+        price = next((r.get("Variant Price", "").strip() for r in output_rows if r.get("Handle") == h and r.get("Variant SKU", "").strip()), "")
         kg = f"{int(grams)/1000:.1f}" if grams else "—"
-        print(f"    {h}  SKU={sku}  grams={grams} ({kg} kg)")
+        wp_source = wholesale_prices.get(sku)
+        wp_note = f"wholesale={wp_source}" if wp_source is not None else "no wholesale"
+        print(f"    {h}  SKU={sku}  price={price} ({wp_note})  grams={grams} ({kg} kg)")
     print()
 
     if hm_rows:

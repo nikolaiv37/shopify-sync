@@ -43,6 +43,9 @@ function parseArgs(argv) {
   const opts = {
     xmlPath: './b2bmarkt_updated.xml',
     category: 'Παιδικό δωμάτιο',
+    outBase: 'missing-products-kids-room',
+    limit: null,
+    skip: 0,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -51,6 +54,14 @@ function parseArgs(argv) {
       opts.xmlPath = a.slice('--xml='.length);
     } else if (a.startsWith('--category=')) {
       opts.category = a.slice('--category='.length);
+    } else if (a.startsWith('--out-base=')) {
+      opts.outBase = a.slice('--out-base='.length);
+    } else if (a.startsWith('--limit=')) {
+      const v = Number.parseInt(a.slice('--limit='.length), 10);
+      if (Number.isFinite(v) && v > 0) opts.limit = v;
+    } else if (a.startsWith('--skip=')) {
+      const v = Number.parseInt(a.slice('--skip='.length), 10);
+      if (Number.isFinite(v) && v >= 0) opts.skip = v;
     }
   }
 
@@ -361,7 +372,7 @@ function toCsv(products) {
   const lines = [headers.join(',')];
   for (const p of products) {
     const row = [
-      escapeCsvField(p.sku),
+      escapeCsvField(String(p.sku)),
       escapeCsvField(p.title),
       escapeCsvField(p.description),
       escapeCsvField(p.wholesale_price),
@@ -390,11 +401,14 @@ async function main() {
 
   log(`Target category: ${targetCategory}`);
   log(`XML file: ${xmlPathResolved}`);
+  if (opts.skip > 0) log(`Skip: ${opts.skip}`);
+  if (opts.limit != null) log(`Limit: ${opts.limit}`);
 
   // Step 1: Fetch Shopify variants
   log('Fetching Shopify variants...');
   ACCESS_TOKEN = await fetchAccessToken();
   const shopifyBySku = await fetchAllVariantsBySku();
+  log(`Shopify SKU count: ${shopifyBySku.size}`);
 
   // Step 2: Parse XML
   log('Parsing XML...');
@@ -417,10 +431,13 @@ async function main() {
   }
   log(`Missing in Shopify: ${missingProducts.length}`);
 
-  // Step 5: Export
-  const baseName = 'missing-products-kids-room';
-  const jsonPath = `${baseName}.json`;
-  const csvPath = `${baseName}.csv`;
+  // Step 5: Apply skip/limit
+  const sliced = missingProducts.slice(opts.skip, opts.skip + (opts.limit ?? missingProducts.length));
+  log(`Exporting ${sliced.length} products (skip=${opts.skip}, limit=${opts.limit ?? 'all'})`);
+
+  // Step 6: Export
+  const jsonPath = `${opts.outBase}.json`;
+  const csvPath = `${opts.outBase}.csv`;
 
   const exportData = {
     exportedAt: nowIso(),
@@ -428,15 +445,29 @@ async function main() {
     xmlSource: xmlPathResolved,
     totalXmlProducts: allProducts.length,
     totalInCategory: categoryProducts.length,
+    shopifySkuCount: shopifyBySku.size,
     totalMissing: missingProducts.length,
-    products: missingProducts,
+    exportedCount: sliced.length,
+    skip: opts.skip,
+    limit: opts.limit,
+    products: sliced,
   };
 
   await fs.writeFile(jsonPath, JSON.stringify(exportData, null, 2));
   log(`Exported to ${jsonPath}`);
 
-  await fs.writeFile(csvPath, toCsv(missingProducts));
+  await fs.writeFile(csvPath, toCsv(sliced));
   log(`Exported to ${csvPath}`);
+
+  // Summary
+  console.log('\n========== Summary ==========');
+  console.log(`Total XML products:           ${allProducts.length}`);
+  console.log(`Products in target category:  ${categoryProducts.length}`);
+  console.log(`Shopify SKU count:            ${shopifyBySku.size}`);
+  console.log(`Missing in Shopify:           ${missingProducts.length}`);
+  console.log(`Exported (after skip/limit):  ${sliced.length}`);
+  console.log(`Output:                       ${jsonPath}, ${csvPath}`);
+  console.log('===============================');
 }
 
 main().catch((e) => {
