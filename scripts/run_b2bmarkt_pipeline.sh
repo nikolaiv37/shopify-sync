@@ -3,7 +3,9 @@
 # Pipeline: Export missing B2BMarkt products → translate → clean Shopify CSV.
 #
 # Usage:
-#   ./scripts/run_b2bmarkt_pipeline.sh                           # full export
+#   ./scripts/run_b2bmarkt_pipeline.sh                           # main feed, default category
+#   ./scripts/run_b2bmarkt_pipeline.sh --feed=symetron           # Symetron feed
+#   ./scripts/run_b2bmarkt_pipeline.sh --xml=custom.xml          # local XML file
 #   ./scripts/run_b2bmarkt_pipeline.sh --limit 20                # first 20 products
 #   ./scripts/run_b2bmarkt_pipeline.sh --skip 20 --limit 20      # next 20
 #   ./scripts/run_b2bmarkt_pipeline.sh --category="Κρεβάτια"     # different category
@@ -12,8 +14,10 @@
 
 set -euo pipefail
 
-XML="${XML_FILE:-b2bmarkt_updated.xml}"
+FEED="${FEED:-}"
+XML="${XML_FILE:-}"
 CATEGORY="${CATEGORY:-Παιδικό δωμάτιο}"
+CATEGORY_MAP="${CATEGORY_MAP:-config/b2bmarkt-category-map.json}"
 OUT_BASE="${OUT_BASE:-missing-products}"
 SKIP="${SKIP:-0}"
 LIMIT="${LIMIT:-}"
@@ -24,8 +28,10 @@ CONCURRENCY="${CONCURRENCY:-1}"
 # Parse CLI overrides
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --feed=*) FEED="${1#--feed=}" ;;
     --xml=*) XML="${1#--xml=}" ;;
     --category=*) CATEGORY="${1#--category=}" ;;
+    --category-map=*) CATEGORY_MAP="${1#--category-map=}" ;;
     --out-base=*) OUT_BASE="${1#--out-base=}" ;;
     --skip=*) SKIP="${1#--skip=}" ;;
     --limit=*) LIMIT="${1#--limit=}" ;;
@@ -37,9 +43,23 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+# Resolve feed to local XML
+if [[ -z "$XML" ]]; then
+  if [[ -n "$FEED" ]]; then
+    echo ">>> Resolving feed: $FEED..."
+    RESOLVED_XML=$(node scripts/resolve_b2bmarkt_feed.js --feed="$FEED")
+    XML="$RESOLVED_XML"
+  else
+    XML="b2bmarkt_updated.xml"
+  fi
+fi
+
 echo "=========================================="
 echo "  B2BMarkt Import Pipeline"
 echo "=========================================="
+if [[ -n "$FEED" ]]; then
+  echo "  Feed:       $FEED"
+fi
 echo "  XML:        $XML"
 echo "  Category:   $CATEGORY"
 echo "  Out base:   $OUT_BASE"
@@ -68,7 +88,10 @@ echo
 
 # Step B: Translate
 echo ">>> Step B: Translating..."
-CMD_B="python3 translate_b2bmarkt_missing.py --input=$MISSING_CSV --model=$MODEL --fallback-model=$FALLBACK_MODEL --max-concurrency=$CONCURRENCY --out-base=$OUT_BASE"
+CMD_B="python3 translate_b2bmarkt_missing.py --input=$MISSING_CSV --model=$MODEL --fallback-model=$FALLBACK_MODEL --max-concurrency=$CONCURRENCY --out-base=$OUT_BASE --category=\"$CATEGORY\""
+if [[ -n "$LIMIT" ]]; then
+  CMD_B="$CMD_B --limit-products=$LIMIT"
+fi
 echo "  $CMD_B"
 eval "$CMD_B"
 echo
@@ -80,7 +103,7 @@ if [[ ! -f "$SHOPIFY_CSV" ]]; then
   echo "ERROR: $SHOPIFY_CSV not found after translation."
   exit 1
 fi
-CMD_C="python3 scripts/clean_b2bmarkt_import.py --input=$SHOPIFY_CSV --weight-source=${OUT_BASE}.json --category=\"$CATEGORY\" --category-map=config/b2bmarkt-category-map.json"
+CMD_C="python3 scripts/clean_b2bmarkt_import.py --input=$SHOPIFY_CSV --weight-source=${OUT_BASE}.json --category=\"$CATEGORY\" --category-map=$CATEGORY_MAP"
 echo "  $CMD_C"
 eval "$CMD_C"
 echo

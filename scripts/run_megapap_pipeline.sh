@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-XML="${XML_FILE:-megapap_en.xml}"
+XML=""
 OUT_BASE="${OUT_BASE:-missing-megapap-products}"
 CATEGORY="${CATEGORY:-}"
 CATEGORY_MAP="${CATEGORY_MAP:-config/megapap-category-map.json}"
@@ -42,7 +42,11 @@ done
 echo "=========================================="
 echo "  Megapap Import Pipeline"
 echo "=========================================="
-echo "  XML:        $XML"
+if [[ -n "$XML" ]]; then
+  echo "  XML:        $XML"
+else
+  echo "  Feed:       MEGAPAP_FEED_URL (from .env)"
+fi
 echo "  Out base:   $OUT_BASE"
 if [[ -n "$CATEGORY" ]]; then
   echo "  Category:   $CATEGORY"
@@ -56,7 +60,10 @@ echo
 
 # Step A: Export missing products
 echo ">>> Step A: Exporting missing Megapap products..."
-CMD_A="node scripts/export_missing_megapap_products.js --xml=$XML --out-base=$OUT_BASE --skip=$SKIP"
+CMD_A="node scripts/export_missing_megapap_products.js --out-base=$OUT_BASE --skip=$SKIP"
+if [[ -n "$XML" ]]; then
+  CMD_A="$CMD_A --xml=$XML"
+fi
 if [[ -n "$CATEGORY" ]]; then
   CMD_A="$CMD_A --category=\"$CATEGORY\""
 fi

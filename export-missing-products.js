@@ -6,14 +6,18 @@
  * Read-only: no writes to Shopify.
  *
  * Usage:
- *   node export-missing-products.js
- *   node export-missing-products.js --xml=b2bmarkt_updated.xml --category="Παιδικό δωμάτιο"
+ *   node export-missing-products.js --feed=main --category="Παιδικό δωμάτιο"
+ *   node export-missing-products.js --feed=symetron --category="Σαλόνια - γωνίες"
+ *   node export-missing-products.js --xml=b2bmarkt_updated.xml --category="Παιδικό δωμάτιο"  # fallback
  */
 
 import 'dotenv/config';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { XMLParser } from 'fast-xml-parser';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ---------- Shopify auth (same as update-prices.js) ----------
 
@@ -36,21 +40,41 @@ const TOKEN_URL = `https://${SHOPIFY_STORE_DOMAIN}/admin/oauth/access_token`;
 
 let ACCESS_TOKEN = null;
 
+// ---------- Feed resolution ----------
+
+async function resolveFeedXml(feed) {
+  if (!feed) return null;
+  const { execSync } = await import('node:child_process');
+  try {
+    const result = execSync(
+      `node scripts/resolve_b2bmarkt_feed.js --feed=${feed}`,
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'inherit'] }
+    );
+    return result.trim();
+  } catch (e) {
+    console.error(`ERROR: Could not resolve feed "${feed}".`);
+    process.exit(1);
+  }
+}
+
 // ---------- CLI ----------
 
 function parseArgs(argv) {
   const args = argv.slice(2);
   const opts = {
-    xmlPath: './b2bmarkt_updated.xml',
+    feed: null,
+    xmlPath: null,
     category: 'Παιδικό δωμάτιο',
-    outBase: 'missing-products-kids-room',
+    outBase: 'missing-products',
     limit: null,
     skip: 0,
   };
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a.startsWith('--xml=')) {
+    if (a.startsWith('--feed=')) {
+      opts.feed = a.slice('--feed='.length);
+    } else if (a.startsWith('--xml=')) {
       opts.xmlPath = a.slice('--xml='.length);
     } else if (a.startsWith('--category=')) {
       opts.category = a.slice('--category='.length);
@@ -396,7 +420,18 @@ function toCsv(products) {
 
 async function main() {
   const opts = parseArgs(process.argv);
-  const xmlPathResolved = path.resolve(opts.xmlPath);
+
+  // Resolve XML path: --feed takes priority, then --xml, then default
+  let xmlPathResolved;
+  if (opts.feed) {
+    xmlPathResolved = await resolveFeedXml(opts.feed);
+    log(`Feed: ${opts.feed}`);
+  } else if (opts.xmlPath) {
+    xmlPathResolved = path.resolve(opts.xmlPath);
+  } else {
+    xmlPathResolved = path.resolve('b2bmarkt_updated.xml');
+  }
+
   const targetCategory = opts.category;
 
   log(`Target category: ${targetCategory}`);

@@ -5,8 +5,11 @@
  * Read-only: no writes to Shopify.
  *
  * Usage:
- *   node scripts/export_missing_megapap_products.js
- *   node scripts/export_missing_megapap_products.js --xml=megapap_en.xml --out-base=missing-megapap-batch-1 --limit=20
+ *   node scripts/export_missing_megapap_products.js --out-base=missing-megapap-batch-1 --limit=20
+ *   node scripts/export_missing_megapap_products.js --xml=megapap_en.xml --out-base=missing-megapap-batch-1
+ *
+ * If --xml is not provided and MEGAPAP_FEED_URL is set in .env, the feed is downloaded
+ * to .tmp/megapap_feed.xml automatically.
  */
 
 import 'dotenv/config';
@@ -21,6 +24,7 @@ const {
   SHOPIFY_CLIENT_ID,
   SHOPIFY_CLIENT_SECRET,
   SHOPIFY_API_VERSION = '2025-10',
+  MEGAPAP_FEED_URL,
 } = process.env;
 
 if (!SHOPIFY_STORE_DOMAIN || !SHOPIFY_CLIENT_ID || !SHOPIFY_CLIENT_SECRET) {
@@ -35,12 +39,33 @@ const TOKEN_URL = `https://${SHOPIFY_STORE_DOMAIN}/admin/oauth/access_token`;
 
 let ACCESS_TOKEN = null;
 
+// ---------- Feed download ----------
+
+async function downloadMegapapFeed() {
+  if (!MEGAPAP_FEED_URL) {
+    return null;
+  }
+  const tmpDir = path.resolve('.tmp');
+  await fs.mkdir(tmpDir, { recursive: true });
+  const outPath = path.join(tmpDir, 'megapap_feed.xml');
+
+  log(`Downloading Megapap feed...`);
+  const res = await fetch(MEGAPAP_FEED_URL);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} downloading Megapap feed`);
+  }
+  const buf = await res.arrayBuffer();
+  await fs.writeFile(outPath, Buffer.from(buf));
+  log(`Downloaded: ${(buf.byteLength / 1024).toFixed(1)} KB → ${outPath}`);
+  return outPath;
+}
+
 // ---------- CLI ----------
 
 function parseArgs(argv) {
   const args = argv.slice(2);
   const opts = {
-    xmlPath: './megapap_en.xml',
+    xmlPath: null,
     outBase: 'missing-megapap-products',
     category: null,
     limit: null,
@@ -410,7 +435,17 @@ function toCsv(products) {
 
 async function main() {
   const opts = parseArgs(process.argv);
-  const xmlPathResolved = path.resolve(opts.xmlPath);
+
+  // Resolve XML path: --xml takes priority, then download from MEGAPAP_FEED_URL, then fallback to local
+  let xmlPathResolved;
+  if (opts.xmlPath) {
+    xmlPathResolved = path.resolve(opts.xmlPath);
+  } else {
+    xmlPathResolved = await downloadMegapapFeed();
+    if (!xmlPathResolved) {
+      xmlPathResolved = path.resolve('megapap_en.xml');
+    }
+  }
 
   log(`XML file: ${xmlPathResolved}`);
   if (opts.category) log(`Category filter: ${opts.category}`);

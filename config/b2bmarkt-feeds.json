@@ -1,0 +1,10 @@
+{
+  "main": {
+    "env": "B2BMARKT_MAIN_URL",
+    "localFile": "b2bmarkt_updated.xml"
+  },
+  "symetron": {
+    "env": "B2BMARKT_SYMETRON_URL",
+    "localFile": "b2bmarkt_symetron.xml"
+  }
+}

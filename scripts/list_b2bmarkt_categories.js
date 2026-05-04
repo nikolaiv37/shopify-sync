@@ -16,16 +16,39 @@ import 'dotenv/config';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { XMLParser } from 'fast-xml-parser';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function parseArgs(argv) {
   const args = argv.slice(2);
-  let xmlPath = 'b2bmarkt_updated.xml';
+  const opts = {
+    xmlPath: null,
+    feed: null,
+  };
   for (const a of args) {
     if (a.startsWith('--xml=')) {
-      xmlPath = a.slice('--xml='.length);
+      opts.xmlPath = a.slice('--xml='.length);
+    } else if (a.startsWith('--feed=')) {
+      opts.feed = a.slice('--feed='.length);
     }
   }
-  return { xmlPath };
+  return opts;
+}
+
+async function resolveFeedXml(feed) {
+  if (!feed) return null;
+  const { execSync } = await import('node:child_process');
+  try {
+    const result = execSync(
+      `node scripts/resolve_b2bmarkt_feed.js --feed=${feed}`,
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'inherit'] }
+    );
+    return result.trim();
+  } catch (e) {
+    console.error(`ERROR: Could not resolve feed "${feed}".`);
+    process.exit(1);
+  }
 }
 
 function extractText(val) {
@@ -52,10 +75,25 @@ function findProductArray(node, productTag) {
   return null;
 }
 
-function main() {
-  const { xmlPath } = parseArgs(process.argv);
-  const xmlPathResolved = path.resolve(xmlPath);
+async function main() {
+  const opts = parseArgs(process.argv);
 
+  let xmlPathResolved;
+  if (opts.xmlPath) {
+    xmlPathResolved = path.resolve(opts.xmlPath);
+  } else if (opts.feed) {
+    if (opts.feed === 'main') {
+      xmlPathResolved = path.resolve('b2bmarkt_updated.xml');
+    } else {
+      xmlPathResolved = await resolveFeedXml(opts.feed);
+    }
+  } else {
+    xmlPathResolved = path.resolve('b2bmarkt_updated.xml');
+  }
+
+  if (opts.feed) {
+    console.log(`Feed: ${opts.feed}`);
+  }
   console.log(`Reading: ${xmlPathResolved}`);
 
   return fs.readFile(xmlPathResolved, 'utf8').then((xmlText) => {
