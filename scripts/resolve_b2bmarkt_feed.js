@@ -86,7 +86,7 @@ async function main() {
       console.error(`ERROR: XML file not found: ${resolved}`);
       process.exit(1);
     }
-    console.log(`XML path (direct): ${resolved}`);
+    console.error(`XML path (direct): ${resolved}`);
     process.stdout.write(resolved);
     return;
   }
@@ -115,14 +115,14 @@ async function main() {
   if (feedUrl) {
     // Download from URL
     const maskedUrl = feedUrl.substring(0, 30) + '...';
-    console.log(`Feed: ${opts.feed}`);
-    console.log(`Env var: ${envVarName} (set)`);
-    console.log(`URL: ${maskedUrl}`);
-    console.log(`Downloading to: ${outPath}`);
+    console.error(`Feed: ${opts.feed}`);
+    console.error(`Env var: ${envVarName} (set)`);
+    console.error(`URL: ${maskedUrl}`);
+    console.error(`Downloading to: ${outPath}`);
 
     try {
       const bytes = await downloadFeed(feedUrl, outPath);
-      console.log(`Downloaded: ${(bytes / 1024).toFixed(1)} KB`);
+      console.error(`Downloaded: ${(bytes / 1024).toFixed(1)} KB`);
     } catch (e) {
       console.error(`ERROR: Download failed: ${e.message}`);
       process.exit(1);
@@ -132,10 +132,10 @@ async function main() {
     try {
       await fs.access(outPath);
       const stat = await fs.stat(outPath);
-      console.log(`Feed: ${opts.feed}`);
-      console.log(`Env var: ${envVarName} (not set)`);
-      console.log(`WARNING: ${envVarName} not set. Using existing local file: ${outPath}`);
-      console.log(`File size: ${(stat.size / 1024).toFixed(1)} KB`);
+      console.error(`Feed: ${opts.feed}`);
+      console.error(`Env var: ${envVarName} (not set)`);
+      console.error(`WARNING: ${envVarName} not set. Using existing local file: ${outPath}`);
+      console.error(`File size: ${(stat.size / 1024).toFixed(1)} KB`);
     } catch {
       console.error(`ERROR: ${envVarName} not set and local file not found: ${outPath}`);
       console.error(`  Set ${envVarName} in .env or place the XML file at ${outPath}`);
@@ -143,7 +143,7 @@ async function main() {
     }
   }
 
-  console.log(`Resolved XML: ${outPath}`);
+  console.error(`Resolved XML: ${outPath}`);
   process.stdout.write(outPath);
 }
 
