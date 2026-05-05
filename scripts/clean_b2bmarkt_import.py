@@ -135,6 +135,9 @@ MIXED_SCRIPT_RE = re.compile(
     r"[\u0400-\u04FFA-Za-z]{3,}"
 )
 
+# Matches image URLs with empty filename before extension: /prd/o/73889/.jpg
+INVALID_IMAGE_URL_RE = re.compile(r"/\.[a-zA-Z]+(?:\?.*)?$")
+
 
 def load_product_data(path):
     """Load weight_kg and raw wholesale_price per SKU from the translated JSON."""
@@ -451,6 +454,54 @@ def main():
 
             output_rows.append(new_row)
 
+    # Filter invalid image URLs (empty filename before extension, e.g. /.jpg)
+    # Product rows (first per handle): clear Image Src but keep product data
+    # Image-only rows: remove entirely
+    invalid_removed = []
+    filtered_rows = []
+    seen_handles = set()
+    for i, r in enumerate(output_rows):
+        h = r.get("Handle", "")
+        img_src = r.get("Image Src", "").strip()
+        is_product_row = h not in seen_handles
+        seen_handles.add(h)
+
+        if img_src and INVALID_IMAGE_URL_RE.search(img_src):
+            sku = r.get("Variant SKU", "").strip()
+            invalid_removed.append({
+                "row": i,
+                "handle": h,
+                "sku": sku,
+                "url": img_src,
+                "is_product_row": is_product_row,
+            })
+            if is_product_row:
+                # Keep product data but clear the invalid image
+                r["Image Src"] = ""
+                r["Image Position"] = ""
+                r["Image Alt Text"] = ""
+                filtered_rows.append(r)
+            # else: image-only row with invalid URL — drop it
+        else:
+            filtered_rows.append(r)
+
+    # Renumber Image Position per handle and detect zero-image products
+    handle_img_positions = {}
+    for r in filtered_rows:
+        h = r.get("Handle", "")
+        img_src = r.get("Image Src", "").strip()
+        if img_src:
+            handle_img_positions.setdefault(h, 0)
+            handle_img_positions[h] += 1
+            r["Image Position"] = str(handle_img_positions[h])
+
+    zero_image_handles = []
+    for h in set(r.get("Handle", "") for r in filtered_rows):
+        if h not in handle_img_positions:
+            zero_image_handles.append(h)
+
+    output_rows = filtered_rows
+
     # Write output
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -640,6 +691,24 @@ def main():
         print(f"  ✓ All image-only rows have blank variant fields")
     print()
 
+    # Invalid image URL report
+    if invalid_removed:
+        print(f"  ⚠ Invalid image URLs removed: {len(invalid_removed)}")
+        for entry in invalid_removed:
+            print(f"    Handle={entry['handle']}  SKU={entry['sku'] or '—'}  URL={entry['url']}")
+    else:
+        print(f"  ✓ No invalid image URLs (empty filename before extension)")
+    print()
+
+    if zero_image_handles:
+        print(f"  ⚠ Products with 0 images after cleanup: {len(zero_image_handles)}")
+        for h in sorted(zero_image_handles):
+            title = next((r.get("Title", "").strip() for r in output_rows if r.get("Handle") == h and r.get("Title", "").strip()), "—")
+            print(f"    {h}  title={title[:60]}")
+    else:
+        print(f"  ✓ All products have at least 1 image")
+    print()
+
     print("  Per-handle breakdown:")
     for h, count in handle_counts.items():
         sku = next((r.get("Variant SKU", "").strip() for r in output_rows if r.get("Handle") == h and r.get("Variant SKU", "").strip()), "—")
@@ -656,7 +725,7 @@ def main():
         print(f"    {h}  SKU={sku}  title={title[:50]}  type={typ}  tags={tags}{rule_label}  images={img_count}")
     print()
 
-    has_issues = greek_rows or hm_rows or bad_image_rows
+    has_issues = greek_rows or hm_rows or bad_image_rows or invalid_removed
     print("-" * 60)
     if rows_with_sku == len(unique_handles) and rows_with_category == 0 and not has_issues:
         if suspicious_rows:
