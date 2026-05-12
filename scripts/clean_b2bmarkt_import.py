@@ -138,6 +138,37 @@ MIXED_SCRIPT_RE = re.compile(
 # Matches image URLs with empty filename before extension: /prd/o/73889/.jpg
 INVALID_IMAGE_URL_RE = re.compile(r"/\.[a-zA-Z]+(?:\?.*)?$")
 
+# Symetron brand name variants
+SYMETRON_RE = re.compile(r"\bSYMETRON\b", re.IGNORECASE)
+
+# Symetron model codes: SM followed by digits, dot, digits (e.g. SM6467.01, SM6451.02)
+SM_CODE_RE = re.compile(r"\bSM\d{4,}\.\d+\b")
+
+# Mixed-script unit artifacts: Cyrillic letter + Latin "cm" or similar
+BROKEN_CM_RE = re.compile(r"[\u0400-\u04FF][cC][mM]\b")
+
+# Known mixed-script word fixes: (pattern, replacement)
+MIXED_SCRIPT_FIXES = [
+    # МОНO (Cyrillic М+О+Н + Latin O) -> Моно
+    ("МОНO", "Моно"),
+    ("МонO", "Моно"),
+    ("мОНО", "Моно"),
+    ("MONO", "Моно"),
+    # Broken cm endings: Cyrillic letter + cm -> см
+]
+
+
+def normalize_mixed_script(value):
+    """Fix known mixed-script artifacts in customer-facing text."""
+    if not value:
+        return value
+    result = value
+    for old, new in MIXED_SCRIPT_FIXES:
+        result = result.replace(old, new)
+    # Fix broken cm endings: any Cyrillic char followed by Latin "cm" -> см
+    result = BROKEN_CM_RE.sub("см", result)
+    return result
+
 
 def load_product_data(path):
     """Load weight_kg and raw wholesale_price per SKU from the translated JSON."""
@@ -213,6 +244,20 @@ def remove_hm_codes(value):
     return result.strip()
 
 
+def remove_symetron_artifacts(value):
+    """Remove SYMETRON brand name and SM model codes from customer-facing text."""
+    if not value:
+        return value
+    result = SYMETRON_RE.sub("", value)
+    result = SM_CODE_RE.sub("", result)
+    result = re.sub(r"\s{2,}", " ", result)
+    result = re.sub(r"\s*-\s*-", " -", result)
+    result = re.sub(r"\s*–\s*–", " –", result)
+    result = re.sub(r"\s*,\s*,", ",", result)
+    result = re.sub(r"\s*&\s*&", " &", result)
+    return result.strip()
+
+
 def clean_body_html(value):
     """Remove HM heading blocks and HM codes from HTML body."""
     if not value:
@@ -276,6 +321,7 @@ def parse_args():
     parser.add_argument("--input", default="shopify-import.csv", help="Input CSV path (default: shopify-import.csv)")
     parser.add_argument("--weight-source", default=None, help="JSON file with weight/price data (default: auto-detect)")
     parser.add_argument("--category", default=None, help="B2BMarkt category name for mapping (e.g. Σαλόνια - γωνίες)")
+    parser.add_argument("--all-categories", action="store_true", help="Use per-product category mapping from JSON source")
     parser.add_argument("--category-map", default=None, help="Path to category mapping JSON file")
     return parser.parse_args()
 
@@ -308,6 +354,16 @@ def auto_detect_weight_source(input_path):
     return None
 
 
+LEVEL_PREFIX_RE = re.compile(r"^\[[Ll](?:[Ee][Vv][Ee][Ll])?\d*\]\s*")
+
+
+def normalize_category(cat):
+    """Remove leading level markers like [L], [L1], [L2], [level] and trim."""
+    if not cat:
+        return ""
+    return LEVEL_PREFIX_RE.sub("", cat).strip()
+
+
 def main():
     args = parse_args()
     input_path = args.input
@@ -338,8 +394,35 @@ def main():
 
     weights = {}
     wholesale_prices = {}
+    sku_categories = {}
     if weight_source:
         weights, wholesale_prices = load_product_data(weight_source)
+        # Also load per-product source categories from JSON for all-categories mode
+        if args.all_categories:
+            try:
+                with open(weight_source, "r", encoding="utf-8") as f:
+                    json_data = json.load(f)
+                for p in json_data.get("products", []):
+                    sku = p.get("sku", "")
+                    if not sku:
+                        continue
+                    # Prefer source_category (from translation JSON)
+                    source_cat = p.get("source_category", "")
+                    if not source_cat:
+                        # Fallback: extract from categories array (from export JSON)
+                        cats = p.get("categories", [])
+                        if cats:
+                            last_cat = cats[-1]
+                            if isinstance(last_cat, dict):
+                                source_cat = last_cat.get("text", "")
+                            else:
+                                source_cat = str(last_cat)
+                    if source_cat:
+                        # Normalize: remove [L], [L1], [L2], [level] prefixes
+                        normalized = normalize_category(source_cat)
+                        sku_categories[sku] = normalized if normalized else source_cat
+            except (FileNotFoundError, json.JSONDecodeError, KeyError):
+                pass
 
     # Load category mapping
     category_map = {}
@@ -368,6 +451,11 @@ def main():
             print(f"WARNING: Category '{args.category}' not found in mapping file {args.category_map}")
             print(f"  Known categories: {', '.join(category_map.keys())}")
             print(f"  Tags will be left empty. Type will use existing CSV value.")
+
+    if args.all_categories:
+        print(f"Mode: ALL CATEGORIES (per-product category mapping)")
+        print(f"  Products with source category: {len(sku_categories)}")
+        print(f"  Categories in map: {len(category_map)}")
 
     # Group rows by Handle, preserving order
     groups = OrderedDict()
@@ -411,6 +499,11 @@ def main():
                 elif field in {"Title", "SEO Title", "SEO Description", "Image Alt Text"}:
                     val = remove_hm_codes(val)
 
+                # Step 2b: remove SYMETRON brand/SM codes and normalize mixed-script artifacts
+                if field in {"Title", "Body (HTML)", "SEO Title", "SEO Description", "Image Alt Text"}:
+                    val = remove_symetron_artifacts(val)
+                    val = normalize_mixed_script(val)
+
                 # Step 3: blank Product Category on ALL rows
                 if field == "Product Category":
                     val = ""
@@ -428,61 +521,137 @@ def main():
                 new_row[field] = val
 
             # Step 6: Apply category mapping to Type and Tags on product rows
-            if idx == 0 and category_mapping:
-                rules = category_mapping.get("rules", [])
-                default = category_mapping.get("default", {})
-                if rules:
-                    title_for_match = new_row.get("Title", "")
-                    body_for_match = new_row.get("Body (HTML)", "")
-                    seo_for_match = new_row.get("SEO Title", "")
-                    matched_rule, matched_pattern = match_rule(rules, title_for_match, body_for_match, seo_for_match)
-                    if matched_rule:
-                        new_row["Type"] = matched_rule.get("type", default.get("type", ""))
-                        tags = matched_rule.get("tags", default.get("tags", []))
-                        new_row["Tags"] = ", ".join(tags) if tags else ""
+            if idx == 0 and category_map:
+                if args.all_categories:
+                    # Per-product category mapping
+                    sku = new_row.get("Variant SKU", "").strip()
+                    source_cat = sku_categories.get(sku, "")
+                    if source_cat and source_cat in category_map:
+                        raw = category_map[source_cat]
+                        prod_mapping, _ = normalize_category_mapping(raw)
+                        if prod_mapping:
+                            rules = prod_mapping.get("rules", [])
+                            default = prod_mapping.get("default", {})
+                            if rules:
+                                title_for_match = new_row.get("Title", "")
+                                body_for_match = new_row.get("Body (HTML)", "")
+                                seo_for_match = new_row.get("SEO Title", "")
+                                matched_rule, matched_pattern = match_rule(rules, title_for_match, body_for_match, seo_for_match)
+                                if matched_rule:
+                                    new_row["Type"] = matched_rule.get("type", default.get("type", ""))
+                                    tags = matched_rule.get("tags", default.get("tags", []))
+                                    new_row["Tags"] = ", ".join(tags) if tags else ""
+                                else:
+                                    new_row["Type"] = default.get("type", "")
+                                    tags = default.get("tags", [])
+                                    new_row["Tags"] = ", ".join(tags) if tags else ""
+                            else:
+                                if default.get("type"):
+                                    new_row["Type"] = default["type"]
+                                if default.get("tags"):
+                                    new_row["Tags"] = ", ".join(default["tags"])
+                                else:
+                                    new_row["Tags"] = ""
+                    # else: no mapping for this category — leave Type/Tags as-is
+                elif category_mapping:
+                    # Single category mode (CLI --category)
+                    rules = category_mapping.get("rules", [])
+                    default = category_mapping.get("default", {})
+                    if rules:
+                        title_for_match = new_row.get("Title", "")
+                        body_for_match = new_row.get("Body (HTML)", "")
+                        seo_for_match = new_row.get("SEO Title", "")
+                        matched_rule, matched_pattern = match_rule(rules, title_for_match, body_for_match, seo_for_match)
+                        if matched_rule:
+                            new_row["Type"] = matched_rule.get("type", default.get("type", ""))
+                            tags = matched_rule.get("tags", default.get("tags", []))
+                            new_row["Tags"] = ", ".join(tags) if tags else ""
+                        else:
+                            new_row["Type"] = default.get("type", "")
+                            tags = default.get("tags", [])
+                            new_row["Tags"] = ", ".join(tags) if tags else ""
                     else:
-                        new_row["Type"] = default.get("type", "")
-                        tags = default.get("tags", [])
-                        new_row["Tags"] = ", ".join(tags) if tags else ""
-                else:
-                    if default.get("type"):
-                        new_row["Type"] = default["type"]
-                    if default.get("tags"):
-                        new_row["Tags"] = ", ".join(default["tags"])
-                    else:
-                        new_row["Tags"] = ""
+                        if default.get("type"):
+                            new_row["Type"] = default["type"]
+                        if default.get("tags"):
+                            new_row["Tags"] = ", ".join(default["tags"])
+                        else:
+                            new_row["Tags"] = ""
 
             output_rows.append(new_row)
 
-    # Filter invalid image URLs (empty filename before extension, e.g. /.jpg)
-    # Product rows (first per handle): clear Image Src but keep product data
-    # Image-only rows: remove entirely
+    # Fix invalid image URLs (empty filename before extension, e.g. /.jpg)
+    # Strategy: replace /.jpg with -1.jpg (which returns proper image/jpeg).
+    # CRITICAL: Never drop the product data row (first row per handle).
+    # If fixing creates a duplicate URL, remove the duplicate image-only row instead.
     invalid_removed = []
+    invalid_replaced = []
     filtered_rows = []
-    seen_handles = set()
+
+    # First pass: identify product rows (first per handle) and collect valid URLs per handle
+    handle_product_row_idx = {}
+    handle_valid_urls = {}
+    for i, r in enumerate(output_rows):
+        h = r.get("Handle", "")
+        if h not in handle_product_row_idx:
+            handle_product_row_idx[h] = i
+        img_src = r.get("Image Src", "").strip()
+        if img_src and not INVALID_IMAGE_URL_RE.search(img_src):
+            handle_valid_urls.setdefault(h, set()).add(img_src)
+
+    # Second pass: process rows
+    # Track which rows to drop (by index)
+    drop_indices = set()
     for i, r in enumerate(output_rows):
         h = r.get("Handle", "")
         img_src = r.get("Image Src", "").strip()
-        is_product_row = h not in seen_handles
-        seen_handles.add(h)
+        is_product_row = (i == handle_product_row_idx.get(h, -1))
 
         if img_src and INVALID_IMAGE_URL_RE.search(img_src):
             sku = r.get("Variant SKU", "").strip()
+            fixed_url = INVALID_IMAGE_URL_RE.sub("/-1.jpg", img_src)
             invalid_removed.append({
                 "row": i,
                 "handle": h,
                 "sku": sku,
                 "url": img_src,
+                "fixed_url": fixed_url,
                 "is_product_row": is_product_row,
             })
-            if is_product_row:
-                # Keep product data but clear the invalid image
-                r["Image Src"] = ""
-                r["Image Position"] = ""
-                r["Image Alt Text"] = ""
-                filtered_rows.append(r)
-            # else: image-only row with invalid URL — drop it
-        else:
+
+            if fixed_url in handle_valid_urls.get(h, set()):
+                # Duplicate: -1.jpg already exists for this handle
+                if is_product_row:
+                    # Product row has /.jpg but -1.jpg exists as image-only row.
+                    # Fix product row URL and drop the duplicate image-only row.
+                    r["Image Src"] = fixed_url
+                    invalid_replaced.append({
+                        "handle": h,
+                        "sku": sku,
+                        "old_url": img_src,
+                        "new_url": fixed_url,
+                    })
+                    # Find and mark the duplicate image-only row for removal
+                    for j, other in enumerate(output_rows):
+                        if j != i and other.get("Handle") == h and other.get("Image Src", "").strip() == fixed_url:
+                            drop_indices.add(j)
+                            break
+                else:
+                    # Image-only row with /.jpg and -1.jpg already exists → drop it
+                    drop_indices.add(i)
+            else:
+                # No duplicate: fix the URL
+                r["Image Src"] = fixed_url
+                invalid_replaced.append({
+                    "handle": h,
+                    "sku": sku,
+                    "old_url": img_src,
+                    "new_url": fixed_url,
+                })
+
+    # Build filtered output, excluding dropped rows
+    for i, r in enumerate(output_rows):
+        if i not in drop_indices:
             filtered_rows.append(r)
 
     # Renumber Image Position per handle and detect zero-image products
@@ -516,10 +685,38 @@ def main():
 
     rows_with_sku = sum(1 for r in output_rows if r.get("Variant SKU", "").strip())
     rows_with_title = sum(1 for r in output_rows if r.get("Title", "").strip())
+    rows_with_price = sum(1 for r in output_rows if r.get("Variant Price", "").strip())
     rows_with_category = sum(1 for r in output_rows if r.get("Product Category", "").strip())
     rows_with_status = sum(1 for r in output_rows if r.get("Status", "").strip())
     rows_with_grams = sum(1 for r in output_rows if r.get("Variant Grams", "").strip())
     image_rows_count = sum(1 for r in output_rows if r.get("Image Src", "").strip())
+
+    # Hard QA: product data row integrity
+    # Product data row = first row per handle (has Variant SKU)
+    handle_product_rows = {}
+    for r in output_rows:
+        h = r.get("Handle", "")
+        sku = r.get("Variant SKU", "").strip()
+        if sku:
+            handle_product_rows.setdefault(h, []).append(r)
+
+    missing_product_data = []
+    duplicate_product_data = []
+    incomplete_product_data = []
+    required_fields = ["Title", "Variant SKU", "Variant Price", "Type", "Tags", "Status"]
+    for h in unique_handles:
+        prod_rows = handle_product_rows.get(h, [])
+        if len(prod_rows) == 0:
+            missing_product_data.append(h)
+        elif len(prod_rows) > 1:
+            duplicate_product_data.append(h)
+        else:
+            row = prod_rows[0]
+            missing_fields = [f for f in required_fields if not row.get(f, "").strip()]
+            if missing_fields:
+                incomplete_product_data.append((h, missing_fields))
+
+    product_data_row_count = len(handle_product_rows)
 
     skus = sorted(set(r.get("Variant SKU", "").strip() for r in output_rows if r.get("Variant SKU", "").strip()))
     leading_zero_skus = [s for s in skus if s.startswith("0")]
@@ -555,6 +752,23 @@ def main():
             for phrase in found:
                 suspicious_rows.append((i, field, phrase, r.get(field, "")[:100]))
 
+    # SYMETRON brand name check
+    symetron_fields = ["Title", "Body (HTML)", "SEO Title", "SEO Description", "Image Alt Text", "Tags"]
+    symetron_rows = []
+    for i, r in enumerate(output_rows):
+        for field in symetron_fields:
+            if SYMETRON_RE.search(r.get(field, "")):
+                symetron_rows.append((i, field, r.get(field, "")[:80]))
+                break
+
+    # SM model code check
+    sm_code_rows = []
+    for i, r in enumerate(output_rows):
+        for field in symetron_fields:
+            if SM_CODE_RE.search(r.get(field, "")):
+                sm_code_rows.append((i, field, r.get(field, "")[:80]))
+                break
+
     # Image-only row validation
     image_only_fields_check = {"Title", "Variant SKU", "Variant Price", "Variant Barcode",
                                "Status", "SEO Title", "SEO Description", "Vendor", "Body (HTML)"}
@@ -565,13 +779,38 @@ def main():
                 if r.get(field, "").strip():
                     bad_image_rows.append((i, field, r.get(field, "")[:60]))
 
+    # Unmapped categories in all-categories mode
+    unmapped_categories = Counter()
+    unmapped_handles = []
+    if args.all_categories and category_map:
+        for r in output_rows:
+            sku = r.get("Variant SKU", "").strip()
+            if not sku:
+                continue
+            source_cat = sku_categories.get(sku, "")
+            if source_cat and source_cat not in category_map:
+                unmapped_categories[source_cat] += 1
+                h = r.get("Handle", "")
+                if h not in [x[0] for x in unmapped_handles]:
+                    unmapped_handles.append((h, sku, source_cat))
+
     print("=" * 60)
     print(f"  QA REPORT: {output_path}")
     print("=" * 60)
     print()
 
     # Category mapping summary
-    if args.category:
+    if args.all_categories:
+        print(f"  Mode:                    ALL CATEGORIES")
+        print(f"  Products with category:  {len(sku_categories)}")
+        print(f"  Categories in map:       {len(category_map)}")
+        if unmapped_categories:
+            print(f"  ⚠ Unmapped categories:   {len(unmapped_categories)}")
+            for cat, count in unmapped_categories.most_common():
+                print(f"    {cat}: {count} products")
+        else:
+            print(f"  ✓ All product categories mapped")
+    elif args.category:
         print(f"  Category:                {args.category}")
         print(f"  Mapping mode:            {mapping_mode}")
         if category_mapping:
@@ -601,6 +840,39 @@ def main():
     print()
     print(f"  Status values:           {dict(status_values)}")
     print()
+
+    # Hard QA: product data row integrity
+    print(f"  Product data rows:       {product_data_row_count}")
+    print(f"  Image-only rows:         {total_rows - product_data_row_count}")
+    print()
+    if missing_product_data:
+        print(f"  ✗ FAIL: {len(missing_product_data)} handles missing product data row:")
+        for h in sorted(missing_product_data)[:10]:
+            print(f"    {h}")
+        if len(missing_product_data) > 10:
+            print(f"    ... and {len(missing_product_data) - 10} more")
+        print()
+    else:
+        print(f"  ✓ All handles have product data row")
+        print()
+
+    if duplicate_product_data:
+        print(f"  ✗ FAIL: {len(duplicate_product_data)} handles with duplicate product data rows:")
+        for h in sorted(duplicate_product_data)[:10]:
+            print(f"    {h}")
+        print()
+    else:
+        print(f"  ✓ No duplicate product data rows")
+        print()
+
+    if incomplete_product_data:
+        print(f"  ✗ FAIL: {len(incomplete_product_data)} product rows with missing required fields:")
+        for h, fields in incomplete_product_data[:10]:
+            print(f"    {h}: missing {', '.join(fields)}")
+        print()
+    else:
+        print(f"  ✓ All product rows have required fields (Title, SKU, Price, Type, Tags, Status)")
+        print()
 
     # Tags and Type analysis (product rows only)
     product_tags = Counter()
@@ -683,6 +955,22 @@ def main():
         print(f"  ✓ No suspicious phrases detected")
     print()
 
+    if symetron_rows:
+        print(f"  ⚠ SYMETRON brand name found: {len(symetron_rows)}")
+        for idx, field, snippet in symetron_rows:
+            print(f"    Row {idx}, '{field}': {snippet}...")
+    else:
+        print(f"  ✓ No SYMETRON in customer-facing fields")
+    print()
+
+    if sm_code_rows:
+        print(f"  ⚠ SM model codes found: {len(sm_code_rows)}")
+        for idx, field, snippet in sm_code_rows:
+            print(f"    Row {idx}, '{field}': {snippet}...")
+    else:
+        print(f"  ✓ No SM model codes in customer-facing fields")
+    print()
+
     if bad_image_rows:
         print(f"  ⚠ Image-only rows with non-blank fields: {len(bad_image_rows)}")
         for idx, field, snippet in bad_image_rows:
@@ -692,12 +980,19 @@ def main():
     print()
 
     # Invalid image URL report
-    if invalid_removed:
-        print(f"  ⚠ Invalid image URLs removed: {len(invalid_removed)}")
-        for entry in invalid_removed:
-            print(f"    Handle={entry['handle']}  SKU={entry['sku'] or '—'}  URL={entry['url']}")
+    if invalid_replaced:
+        print(f"  ✓ Invalid image URLs fixed (/.jpg → -1.jpg): {len(invalid_replaced)}")
+        for entry in invalid_replaced[:10]:
+            print(f"    {entry['handle']}  SKU={entry['sku'] or '—'}  {entry['old_url']} → {entry['new_url']}")
+        if len(invalid_replaced) > 10:
+            print(f"    ... and {len(invalid_replaced) - 10} more")
     else:
         print(f"  ✓ No invalid image URLs (empty filename before extension)")
+
+    invalid_dropped = [e for e in invalid_removed if e.get("fixed_url") and e["handle"] in [r.get("Handle") for r in filtered_rows if r.get("Image Src") == e["fixed_url"]]]
+    if len(invalid_removed) > len(invalid_replaced):
+        dropped_count = len(invalid_removed) - len(invalid_replaced)
+        print(f"  ⚠ Invalid URLs dropped (duplicate -1.jpg): {dropped_count}")
     print()
 
     if zero_image_handles:
@@ -715,7 +1010,7 @@ def main():
         title = next((r.get("Title", "").strip() for r in output_rows if r.get("Handle") == h and r.get("Title", "").strip()), "—")
         typ = next((r.get("Type", "").strip() for r in output_rows if r.get("Handle") == h), "—")
         tags = next((r.get("Tags", "").strip() for r in output_rows if r.get("Handle") == h), "—")
-        img_count = count - 1
+        img_count = sum(1 for r in output_rows if r.get("Handle") == h and r.get("Image Src", "").strip())
         rule_label = ""
         if category_mapping and category_mapping["rules"]:
             body = next((r.get("Body (HTML)", "") for r in output_rows if r.get("Handle") == h), "")
@@ -725,9 +1020,12 @@ def main():
         print(f"    {h}  SKU={sku}  title={title[:50]}  type={typ}  tags={tags}{rule_label}  images={img_count}")
     print()
 
-    has_issues = greek_rows or hm_rows or bad_image_rows or invalid_removed
+    has_hard_failure = missing_product_data or duplicate_product_data or incomplete_product_data
+    has_issues = greek_rows or hm_rows or bad_image_rows or invalid_removed or symetron_rows or sm_code_rows or unmapped_categories
     print("-" * 60)
-    if rows_with_sku == len(unique_handles) and rows_with_category == 0 and not has_issues:
+    if has_hard_failure:
+        print("  ✗ FAIL: Product data integrity errors — DO NOT IMPORT")
+    elif rows_with_sku == len(unique_handles) and rows_with_category == 0 and not has_issues:
         if suspicious_rows:
             print("  RESULT: CLEAN with warnings — review suspicious phrases before import")
         else:

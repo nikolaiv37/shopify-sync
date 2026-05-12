@@ -17,6 +17,7 @@ set -euo pipefail
 FEED="${FEED:-}"
 XML="${XML_FILE:-}"
 CATEGORY="${CATEGORY:-Παιδικό δωμάτιο}"
+ALL_CATEGORIES="${ALL_CATEGORIES:-}"
 CATEGORY_MAP="${CATEGORY_MAP:-config/b2bmarkt-category-map.json}"
 OUT_BASE="${OUT_BASE:-missing-products}"
 SKIP="${SKIP:-0}"
@@ -31,6 +32,7 @@ while [[ $# -gt 0 ]]; do
     --feed=*) FEED="${1#--feed=}" ;;
     --xml=*) XML="${1#--xml=}" ;;
     --category=*) CATEGORY="${1#--category=}" ;;
+    --all-categories) ALL_CATEGORIES="1" ;;
     --category-map=*) CATEGORY_MAP="${1#--category-map=}" ;;
     --out-base=*) OUT_BASE="${1#--out-base=}" ;;
     --skip=*) SKIP="${1#--skip=}" ;;
@@ -61,7 +63,11 @@ if [[ -n "$FEED" ]]; then
   echo "  Feed:       $FEED"
 fi
 echo "  XML:        $XML"
-echo "  Category:   $CATEGORY"
+if [[ -n "$ALL_CATEGORIES" ]]; then
+  echo "  Mode:       ALL CATEGORIES"
+else
+  echo "  Category:   $CATEGORY"
+fi
 echo "  Out base:   $OUT_BASE"
 echo "  Skip:       $SKIP"
 echo "  Limit:      ${LIMIT:-all}"
@@ -72,7 +78,12 @@ echo
 
 # Step A: Export missing products
 echo ">>> Step A: Exporting missing products..."
-CMD_A="node export-missing-products.js --xml=$XML --category=\"$CATEGORY\" --out-base=$OUT_BASE --skip=$SKIP"
+CMD_A="node export-missing-products.js --xml=$XML --out-base=$OUT_BASE --skip=$SKIP"
+if [[ -n "$ALL_CATEGORIES" ]]; then
+  CMD_A="$CMD_A --all-categories"
+else
+  CMD_A="$CMD_A --category=\"$CATEGORY\""
+fi
 if [[ -n "$LIMIT" ]]; then
   CMD_A="$CMD_A --limit=$LIMIT"
 fi
@@ -88,7 +99,12 @@ echo
 
 # Step B: Translate
 echo ">>> Step B: Translating..."
-CMD_B="python3 translate_b2bmarkt_missing.py --input=$MISSING_CSV --model=$MODEL --fallback-model=$FALLBACK_MODEL --max-concurrency=$CONCURRENCY --out-base=$OUT_BASE --category=\"$CATEGORY\""
+CMD_B="python3 translate_b2bmarkt_missing.py --input=$MISSING_CSV --model=$MODEL --fallback-model=$FALLBACK_MODEL --max-concurrency=$CONCURRENCY --out-base=$OUT_BASE"
+if [[ -n "$ALL_CATEGORIES" ]]; then
+  CMD_B="$CMD_B --all-categories"
+else
+  CMD_B="$CMD_B --category=\"$CATEGORY\""
+fi
 if [[ -n "$LIMIT" ]]; then
   CMD_B="$CMD_B --limit-products=$LIMIT"
 fi
@@ -103,7 +119,12 @@ if [[ ! -f "$SHOPIFY_CSV" ]]; then
   echo "ERROR: $SHOPIFY_CSV not found after translation."
   exit 1
 fi
-CMD_C="python3 scripts/clean_b2bmarkt_import.py --input=$SHOPIFY_CSV --weight-source=${OUT_BASE}.json --category=\"$CATEGORY\" --category-map=$CATEGORY_MAP"
+CMD_C="python3 scripts/clean_b2bmarkt_import.py --input=$SHOPIFY_CSV --weight-source=${OUT_BASE}.json --category-map=$CATEGORY_MAP"
+if [[ -n "$ALL_CATEGORIES" ]]; then
+  CMD_C="$CMD_C --all-categories"
+else
+  CMD_C="$CMD_C --category=\"$CATEGORY\""
+fi
 echo "  $CMD_C"
 eval "$CMD_C"
 echo

@@ -65,6 +65,7 @@ function parseArgs(argv) {
     feed: null,
     xmlPath: null,
     category: 'Παιδικό δωμάτιο',
+    allCategories: false,
     outBase: 'missing-products',
     limit: null,
     skip: 0,
@@ -78,6 +79,8 @@ function parseArgs(argv) {
       opts.xmlPath = a.slice('--xml='.length);
     } else if (a.startsWith('--category=')) {
       opts.category = a.slice('--category='.length);
+    } else if (a === '--all-categories') {
+      opts.allCategories = true;
     } else if (a.startsWith('--out-base=')) {
       opts.outBase = a.slice('--out-base='.length);
     } else if (a.startsWith('--limit=')) {
@@ -434,8 +437,12 @@ async function main() {
 
   const targetCategory = opts.category;
 
-  log(`Target category: ${targetCategory}`);
   log(`XML file: ${xmlPathResolved}`);
+  if (opts.allCategories) {
+    log('Mode: ALL CATEGORIES (no category filter)');
+  } else {
+    log(`Target category: ${targetCategory}`);
+  }
   if (opts.skip > 0) log(`Skip: ${opts.skip}`);
   if (opts.limit != null) log(`Limit: ${opts.limit}`);
 
@@ -451,9 +458,18 @@ async function main() {
   const allProducts = parseXmlProducts(xmlText, 'Product');
   log(`Products parsed from XML: ${allProducts.length}`);
 
-  // Step 3: Filter by category
-  const categoryProducts = allProducts.filter((p) => matchesCategory(p, targetCategory));
-  log(`Products in ${targetCategory}: ${categoryProducts.length}`);
+  // Step 3: Filter by category (or skip filter in all-categories mode)
+  let categoryProducts;
+  let categoryLabel;
+  if (opts.allCategories) {
+    categoryProducts = allProducts;
+    categoryLabel = '__ALL__';
+    log(`Products (all categories): ${categoryProducts.length}`);
+  } else {
+    categoryProducts = allProducts.filter((p) => matchesCategory(p, targetCategory));
+    categoryLabel = targetCategory;
+    log(`Products in ${targetCategory}: ${categoryProducts.length}`);
+  }
 
   // Step 4: Compare against Shopify
   const missingProducts = [];
@@ -476,7 +492,8 @@ async function main() {
 
   const exportData = {
     exportedAt: nowIso(),
-    category: targetCategory,
+    category: categoryLabel,
+    allCategories: opts.allCategories,
     xmlSource: xmlPathResolved,
     totalXmlProducts: allProducts.length,
     totalInCategory: categoryProducts.length,
@@ -497,7 +514,11 @@ async function main() {
   // Summary
   console.log('\n========== Summary ==========');
   console.log(`Total XML products:           ${allProducts.length}`);
-  console.log(`Products in target category:  ${categoryProducts.length}`);
+  if (opts.allCategories) {
+    console.log(`Mode:                         ALL CATEGORIES`);
+  } else {
+    console.log(`Products in target category:  ${categoryProducts.length}`);
+  }
   console.log(`Shopify SKU count:            ${shopifyBySku.size}`);
   console.log(`Missing in Shopify:           ${missingProducts.length}`);
   console.log(`Exported (after skip/limit):  ${sliced.length}`);

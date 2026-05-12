@@ -37,6 +37,9 @@ GREEK_RE = re.compile(r"[\u0391-\u03C9]")
 CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
 ALLOW_LATIN = {"PVC", "MDF", "E1", "K/D", "YES", "NO", "LED", "HM", "SKU"}
 
+# Shopify supports up to 10 images per product
+MAX_SHOPIFY_IMAGES = 10
+
 # Map B2BMarkt Greek category names to Bulgarian tags/types
 CATEGORY_TAG_MAP = {
     "Παιδικό δωμάτιο": "Детска стая",
@@ -356,6 +359,20 @@ class OpenRouterTranslator:
         return "\n".join(base)
 
 
+def extract_source_category(categories_str):
+    """Extract the most specific (last) source category from a categories string.
+    Format: '[L1] Parent > [L2] Child' -> returns 'Child'
+    """
+    if not categories_str:
+        return ""
+    parts = categories_str.split(" > ")
+    if not parts:
+        return ""
+    last_part = parts[-1].strip()
+    # Remove [Lx] prefix
+    return re.sub(r"\[L\d+\]\s*", "", last_part).strip()
+
+
 def translate_product(translator, product, idx, category_tag=""):
     sku = product.get("sku", "")
     title = product.get("title", "")
@@ -370,7 +387,7 @@ def translate_product(translator, product, idx, category_tag=""):
         {"key": "seo_title", "primary_text": title[:70], "context_text": f"title={title}"},
         {"key": "seo_description", "primary_text": f"{title[:50]} - {description[:100]}", "context_text": f"title={title}"},
     ]
-    for i, img in enumerate(images[:5], 1):
+    for i, img in enumerate(images[:MAX_SHOPIFY_IMAGES], 1):
         items.append({"key": f"alt_{i}", "primary_text": f"{title} - image {i}", "context_text": ""})
     results, errors, _ = translator.translate_batch("title", [it for it in items if it["key"] == "title"])
     results_desc, errors_desc, _ = translator.translate_batch("description", [it for it in items if it["key"] == "description"])
@@ -394,10 +411,11 @@ def translate_product(translator, product, idx, category_tag=""):
     bg_seo_title = results.get("seo_title", bg_title[:70])
     bg_seo_description = results.get("seo_description", "")
     alt_texts = {}
-    for i, img in enumerate(images[:5], 1):
+    for i, img in enumerate(images[:MAX_SHOPIFY_IMAGES], 1):
         alt_texts[img] = results.get(f"alt_{i}", f"{bg_title} - снимка {i}")
     bg_categories = categories.replace("Παιδικό δωμάτιο", "Детска стая")
     tags = [category_tag] if category_tag else []
+    source_category = extract_source_category(categories)
     return {
         "sku": sku,
         "title_original": title,
@@ -407,6 +425,7 @@ def translate_product(translator, product, idx, category_tag=""):
         "seo_title_bg": bg_seo_title[:70],
         "seo_description_bg": bg_seo_description[:160] if bg_seo_description else "",
         "categories_bg": bg_categories,
+        "source_category": source_category,
         "tags": tags,
         "images": images,
         "alt_texts": alt_texts,
@@ -429,7 +448,7 @@ def build_shopify_csv_row(translated):
     dimensions = translated.get("dimensions", "")
     weight = translated.get("weight_kg", "")
     rows = []
-    for i, img in enumerate(images[:5], 1):
+    for i, img in enumerate(images[:MAX_SHOPIFY_IMAGES], 1):
         row = {
             "Handle": handle,
             "Title": translated["title_bg"],
@@ -507,6 +526,7 @@ def main():
     parser.add_argument("--limit-products", type=int, help="Limit number of products to process")
     parser.add_argument("--out-base", default="translated-kids-room-products", help="Output base name (default: translated-kids-room-products)")
     parser.add_argument("--category", default="", help="B2BMarkt category name (e.g. Παιδικό δωμάτιο, Σαλόνια - γωνίες)")
+    parser.add_argument("--all-categories", action="store_true", help="Process all categories (per-product category preserved)")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
@@ -542,17 +562,39 @@ def main():
 
     print(f"Products to translate: {len(products)}")
 
-    category_tag = resolve_category_tag(args.category)
-    if category_tag:
-        print(f"Category tag: {category_tag}")
+    if args.all_categories:
+        print("Mode: ALL CATEGORIES (per-product category preserved)")
+        print("Category tag: (per-product — Tags empty, cleaner will map)")
     else:
-        print("Category tag: (none — Tags will be empty)")
+        category_tag = resolve_category_tag(args.category)
+        if category_tag:
+            print(f"Category tag: {category_tag}")
+        else:
+            print("Category tag: (none — Tags will be empty)")
 
     translated_products = []
     errors_log = []
 
     with ThreadPoolExecutor(max_workers=args.max_concurrency) as executor:
-        futures = {executor.submit(translate_product, translator, p, idx, category_tag): (idx, p) for idx, p in enumerate(products)}
+        futures = {}
+        for idx, p in enumerate(products):
+            if args.all_categories:
+                # Use per-product source category
+                p_categories = p.get("categories", "")
+                # Extract the first (primary) category text from the categories string
+                # Format: "[L1] Category1 > [L2] Category2"
+                primary_cat = ""
+                if p_categories:
+                    # Try to extract the last level category (most specific)
+                    parts = p_categories.split(" > ")
+                    if parts:
+                        last_part = parts[-1].strip()
+                        # Remove [Lx] prefix
+                        primary_cat = re.sub(r"\[L\d+\]\s*", "", last_part).strip()
+                tag = resolve_category_tag(primary_cat)
+            else:
+                tag = category_tag
+            futures[executor.submit(translate_product, translator, p, idx, tag)] = (idx, p)
         for future in as_completed(futures):
             idx, product = futures[future]
             try:
