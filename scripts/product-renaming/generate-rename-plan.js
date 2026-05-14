@@ -5,10 +5,11 @@
  * READ-ONLY. No mutations.
  *
  * Usage:
- *   node scripts/product-renaming/generate-rename-plan.js --input=logs/product-renaming/export-products-*.json
- *   node scripts/product-renaming/generate-rename-plan.js --input=... --category=garden --limit=100
- *   node scripts/product-renaming/generate-rename-plan.js --input=... --category=sofas --limit=50
- *   node scripts/product-renaming/generate-rename-plan.js --input=... --out=my-plan.json
+ *   node scripts/product-renaming/generate-rename-plan.js
+ *   node scripts/product-renaming/generate-rename-plan.js --category=garden --limit=100
+ *   node scripts/product-renaming/generate-rename-plan.js --category=sofas --limit=50
+ *   node scripts/product-renaming/generate-rename-plan.js --out=my-plan.json
+ *   node scripts/product-renaming/generate-rename-plan.js --input=logs/product-renaming/export-products-*.json --allow-archive-input
  *
  * Output:
  *   logs/product-renaming/rename-plan-YYYY-MM-DDTHH-mm-ss.json
@@ -48,6 +49,7 @@ function parseArgs(argv) {
     category: null,
     limit: null,
     out: null,
+    allowArchiveInput: false,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -61,6 +63,7 @@ function parseArgs(argv) {
       const v = Number.parseInt(args[++i], 10);
       if (Number.isFinite(v) && v > 0) opts.limit = v;
     } else if (a.startsWith('--out=')) opts.out = a.slice('--out='.length);
+    else if (a === '--allow-archive-input') opts.allowArchiveInput = true;
   }
 
   return opts;
@@ -85,6 +88,16 @@ function replaceAllKnownModels(text, newModel) {
   return result;
 }
 
+function deduplicateRepeatedWords(text) {
+  if (!text) return text;
+  let result = text;
+  result = result.replace(/(\S+)\s+\1(?![\wА-Яа-яЁё])/gi, '$1');
+  result = result.replace(/(\S+)\s+[–-]\s*\1(?![\wА-Яа-яЁё])/gi, '$1');
+  result = result.replace(/(\S+)\s*,\s*\1(?![\wА-Яа-яЁё])/gi, '$1');
+  result = result.replace(/\s{2,}/g, ' ').trim();
+  return result;
+}
+
 function generateDescriptionReplacement(descriptionHtml, oldModel, newModel) {
   if (!descriptionHtml || !oldModel) return null;
   const escaped = escapeModelNameForRegex(oldModel);
@@ -106,6 +119,8 @@ function generateSeoTitle(oldSeoTitle, oldModel, newModel, newTitle) {
   }
 
   base = normalizeText(base);
+  base = deduplicateRepeatedWords(base);
+
   if (!base.endsWith('| Mebelcenter')) {
     base += ' | Mebelcenter';
   }
@@ -119,7 +134,9 @@ function generateSeoDescription(oldSeoDescription, oldModel, newModel) {
   if (oldModel) {
     desc = desc.replace(new RegExp(escapeModelNameForRegex(oldModel), 'gi'), newModel);
   }
-  return normalizeText(desc);
+  desc = normalizeText(desc);
+  desc = deduplicateRepeatedWords(desc);
+  return desc;
 }
 
 function hasTruncatedFragment(text) {
@@ -218,8 +235,18 @@ function disambiguateTitle(newTitle, product, allTitles) {
 async function main() {
   const opts = parseArgs(process.argv);
 
+  const currentExportPath = path.join('logs', 'product-renaming', 'current', 'export.json');
+
   if (!opts.input) {
-    console.error('ERROR: --input is required. Path to exported products JSON.');
+    opts.input = currentExportPath;
+  }
+
+  const inputIsCurrent = opts.input === currentExportPath || opts.input === path.resolve(currentExportPath);
+
+  if (!inputIsCurrent && !opts.allowArchiveInput) {
+    console.error('ERROR: --input is not current/export.json.');
+    console.error('To use an archived export, add --allow-archive-input.');
+    console.error('Otherwise, run: npm run rename:export');
     process.exit(1);
   }
 
@@ -236,6 +263,13 @@ async function main() {
   }
 
   log(`Loaded ${products.length} products from export.`);
+
+  const exportSource = {
+    inputPath: opts.input,
+    exportTimestamp: rawData.timestamp || null,
+    exportFilters: rawData.filters || null,
+    totalExported: rawData.totalExported || products.length,
+  };
 
   const plan = [];
   let nameIndex = 0;
@@ -348,16 +382,19 @@ async function main() {
     ? path.resolve(opts.out)
     : path.join(outDir, `rename-plan-${timestamp}.json`);
 
-  await fs.writeFile(planPath, JSON.stringify({
+  const planMeta = {
     timestamp: nowIso(),
     input: opts.input,
+    exportSource,
     filters: {
       category: opts.category,
       limit: opts.limit,
     },
     totalProducts: plan.length,
     plan,
-  }, null, 2));
+  };
+
+  await fs.writeFile(planPath, JSON.stringify(planMeta, null, 2));
 
   log(`Rename plan: ${planPath}`);
 
@@ -383,6 +420,11 @@ async function main() {
   await fs.writeFile(csvPath, `${csvHeader}\n${csvRows.join('\n')}\n`);
 
   log(`CSV preview: ${csvPath}`);
+
+  const currentDir = path.join(outDir, 'current');
+  await fs.mkdir(currentDir, { recursive: true });
+  await fs.writeFile(path.join(currentDir, 'plan.json'), JSON.stringify(planMeta, null, 2));
+  await fs.writeFile(path.join(currentDir, 'preview.csv'), `${csvHeader}\n${csvRows.join('\n')}\n`);
 
   const riskCounts = { low: 0, medium: 0, high: 0, skip: 0 };
   for (const item of plan) riskCounts[item.risk]++;

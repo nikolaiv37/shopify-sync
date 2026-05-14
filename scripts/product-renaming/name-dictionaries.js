@@ -293,7 +293,12 @@ const TRUNCATED_PATTERNS = [
   /плат\s+OL\b/i,
   /синтерован\s*$/i,
   /-синтерован\s*$/i,
-  /тек-син\b/i,
+  /тек-син(?!\w)/i,
+  /въже-тек-син(?!\w)/i,
+  /-ус\b\s*$/i,
+  /крем\/б\b/i,
+  /,\s*тъ\b\s*$/i,
+  /-тъ\b\s*$/i,
 ];
 
 function normalizeText(value) {
@@ -425,11 +430,18 @@ function repairTruncatedFragments(text, descriptionHtml) {
     { pattern: /-си\b\s*$/i, fix: '', descCheck: null, removeFallback: '' },
     { pattern: /-си\s*$/i, fix: '', descCheck: null, removeFallback: '' },
 
-    { pattern: /тек-син\b/i, fix: '', descCheck: null, removeFallback: '' },
+    { pattern: /въже-тек-син(?!\w)/i, fix: '', descCheck: 'тик', removeFallback: '' },
+    { pattern: /-тек-син(?!\w)/i, fix: '', descCheck: null, removeFallback: '' },
+    { pattern: /тек-син(?!\w)/i, fix: '', descCheck: null, removeFallback: '' },
 
     { pattern: /\s[пП]\s*$/i, fix: ' плат', descCheck: 'плат', removeFallback: '' },
     { pattern: /\s[оО]\s*$/i, fix: '', descCheck: null, removeFallback: '' },
     { pattern: /\sO\b\s*$/i, fix: '', descCheck: null, removeFallback: '' },
+
+    { pattern: /-ус\b\s*$/i, fix: '', descCheck: null, removeFallback: '' },
+    { pattern: /крем\/б\b/i, fix: 'крем', descCheck: 'крем', removeFallback: 'крем' },
+    { pattern: /,\s*тъ\b\s*$/i, fix: '', descCheck: null, removeFallback: '' },
+    { pattern: /-тъ\b\s*$/i, fix: '', descCheck: null, removeFallback: '' },
   ];
 
   for (const r of repairs) {
@@ -493,9 +505,15 @@ function cleanBrokenFragments(text) {
     /\bкамъ\b/i,
     /-синтерован\s*$/i,
     /синтерован\s*$/i,
-    /тек-син\b/i,
+    /въже-тек-син(?!\w)/i,
+    /-тек-син(?!\w)/i,
+    /тек-син(?!\w)/i,
     /плат\s+OLEF\b/i,
     /плат\s+OL\b(?!\w)/i,
+    /-ус\b\s*$/i,
+    /крем\/б\b/i,
+    /,\s*тъ\b\s*$/i,
+    /-тъ\b\s*$/i,
   ];
 
   for (const pattern of brokenPatterns) {
@@ -675,6 +693,7 @@ function buildRenamedTitle(product, detectedCategory, newName) {
   body = body.replace(/^комплект\s+за\s+хранене\s*/gi, '').trim();
   body = body.replace(/^трапезна\s+маса\s*/gi, '').trim();
   body = body.replace(/^трапезария\s*/gi, '').trim();
+  body = body.replace(/^сет\s+трапезария\s+за\s+външно\s+пространство\s*/gi, '').trim();
   body = body.replace(/^серия\s*/gi, '').trim();
   body = body.replace(/^ъглов\s+комплект\s+за\s+хол\s*/gi, '').trim();
   body = body.replace(/^сет\s+за\s+външен\s+ъгъл\s*/gi, '').trim();
@@ -735,6 +754,7 @@ function buildTitleWithoutModel(title, detectedCategory, newName, productType, p
   cleaned = cleaned.replace(/^комплект\s+за\s+хранене\s*/gi, '').trim();
   cleaned = cleaned.replace(/^трапезна\s+маса\s*/gi, '').trim();
   cleaned = cleaned.replace(/^трапезария\s*/gi, '').trim();
+  cleaned = cleaned.replace(/^сет\s+трапезария\s+за\s+външно\s+пространство\s*/gi, '').trim();
   cleaned = cleaned.replace(/^серия\s*/gi, '').trim();
   cleaned = cleaned.replace(/^ъглов\s+комплект\s+за\s+хол\s*/gi, '').trim();
   cleaned = cleaned.replace(/^многофункционален\s+комплект\s+за\s+външен\s+кът\s*/gi, '').trim();
@@ -784,8 +804,12 @@ function deduplicateWords(title) {
 
   result = result.replace(/плат\s+Olefin\s+плат/gi, 'Olefin плат');
   result = result.replace(/плат\s+и\s+Olefin\s+плат/gi, 'Olefin плат');
-  result = result.replace(/(\w+)\s+и\s+(\w+)\s+и\s+Olefin\s+плат/gi, '$1, $2 и Olefin плат');
-  result = result.replace(/(\w+)\s+и\s+въже\s+и\s+Olefin/gi, '$1, въже и Olefin');
+  result = result.replace(/(\S+)\s+и\s+(\S+)\s+и\s+Olefin\s+плат/gi, '$1, $2 и Olefin плат');
+  result = result.replace(/(\S+)\s+и\s+въже\s+и\s+Olefin/gi, '$1, въже и Olefin');
+  result = result.replace(/(\S+)\s+и\s+(\S+)\s+и\s+(\S+)/gi, (match, a, b, c) => {
+    if (b === 'и') return match;
+    return `${a}, ${b} и ${c}`;
+  });
   result = result.replace(/алуминий\s+Olefin/gi, 'алуминий и Olefin');
   result = result.replace(/платOlefin/g, 'плат и Olefin');
   result = result.replace(/плат-Olefin/gi, 'плат и Olefin');

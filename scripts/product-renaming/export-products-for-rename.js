@@ -280,6 +280,22 @@ async function main() {
     products,
   }, null, 2));
 
+  const currentDir = path.join(outDir, 'current');
+  await fs.mkdir(currentDir, { recursive: true });
+  await fs.writeFile(path.join(currentDir, 'export.json'), JSON.stringify({
+    timestamp: nowIso(),
+    filters: {
+      status: opts.status,
+      vendor: opts.vendor,
+      query: opts.query,
+      limit: opts.limit,
+    },
+    totalExported: products.length,
+    vendors: Array.from(vendors),
+    topProductTypes: Object.fromEntries(topTypes),
+    products,
+  }, null, 2));
+
   console.log();
   console.log('========== Summary ==========');
   console.log(`Exported count:    ${products.length}`);

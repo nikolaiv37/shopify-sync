@@ -299,6 +299,14 @@ async function main() {
     validation,
   }, null, 2));
 
+  const currentDir = path.join(outDir, 'current');
+  await fs.mkdir(currentDir, { recursive: true });
+  await fs.writeFile(path.join(currentDir, 'validation.json'), JSON.stringify({
+    timestamp: nowIso(),
+    plan: opts.plan,
+    validation,
+  }, null, 2));
+
   console.log();
   console.log('========== Validation Summary ==========');
   console.log(`Total items:       ${validation.totalItems}`);
