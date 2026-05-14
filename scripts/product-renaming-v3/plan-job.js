@@ -35,9 +35,80 @@ import {
   isAlreadyRenamedByPrefix,
 } from './lib/model-detection.js';
 import { allocateName, loadAllocation, saveAllocation } from './lib/name-allocation.js';
-import { V3_CONTROLLED_NAMES } from './lib/dictionaries.js';
+import { V3_CONTROLLED_NAMES, getV3Dictionary } from './lib/dictionaries.js';
 import { replaceModel } from './lib/replacement.js';
 import { decide } from './lib/validation.js';
+
+/**
+ * Build a per-category dictionary-capacity report.
+ *
+ * For each category seen in the plan among ready + needs_review items, we
+ * report:
+ *   dictionarySize      total names in V3_DICTIONARIES[category]
+ *   uniqueOldModels     distinct oldModel values that came in for this cat
+ *   allocatedNames      distinct new names actually allocated for this cat
+ *   fallbackCount       new names that exhausted the dictionary ("Аурора 2")
+ *   fallbackExamples    up to 5 such fallback names
+ *
+ * Items with status skipped_already_renamed / skipped_no_model / blocked are
+ * excluded — they would not be applied anyway, so they should not influence
+ * the "do we need a bigger dictionary" decision.
+ */
+function computeDictionaryCapacity(plan, alloc) {
+  const ELIGIBLE = new Set(['ready', 'needs_review']);
+  const perCategory = new Map();
+  for (const item of plan) {
+    if (!ELIGIBLE.has(item.status)) continue;
+    if (!item.oldModel) continue;
+    const cat = item.detectedCategory || 'generic';
+    if (!perCategory.has(cat)) {
+      perCategory.set(cat, {
+        category: cat,
+        dictionarySize: getV3Dictionary(cat).length,
+        uniqueOldModels: new Set(),
+        allocatedNames: new Set(),
+        fallbackCount: 0,
+        fallbackExamples: [],
+      });
+    }
+    const stats = perCategory.get(cat);
+    stats.uniqueOldModels.add(item.oldModel);
+    if (item.newModel) stats.allocatedNames.add(item.newModel);
+  }
+
+  // Cross-check fallbacks against the persisted alloc state so we still
+  // surface fallbacks that might not appear among ready/needs_review items
+  // (rare but possible — e.g. a fallback got allocated then the item was
+  // demoted to blocked).
+  const fallbacksByCategory = alloc.fallbacksByCategory || {};
+  for (const [cat, names] of Object.entries(fallbacksByCategory)) {
+    if (!perCategory.has(cat)) {
+      perCategory.set(cat, {
+        category: cat,
+        dictionarySize: getV3Dictionary(cat).length,
+        uniqueOldModels: new Set(),
+        allocatedNames: new Set(),
+        fallbackCount: 0,
+        fallbackExamples: [],
+      });
+    }
+    const stats = perCategory.get(cat);
+    for (const n of names) {
+      stats.allocatedNames.add(n);
+      stats.fallbackCount++;
+      if (stats.fallbackExamples.length < 5) stats.fallbackExamples.push(n);
+    }
+  }
+
+  return Array.from(perCategory.values()).map((s) => ({
+    category: s.category,
+    dictionarySize: s.dictionarySize,
+    uniqueOldModels: s.uniqueOldModels.size,
+    allocatedNames: s.allocatedNames.size,
+    fallbackCount: s.fallbackCount,
+    fallbackExamples: s.fallbackExamples,
+  }));
+}
 
 function parseArgs(argv) {
   const args = argv.slice(2);
@@ -165,7 +236,9 @@ function planItem(product, categoryOverride, alloc) {
   }
 
   const oldModel = detection.detected;
-  const newModel = allocateName(alloc, detectedCategory, oldModel);
+  const allocation = allocateName(alloc, detectedCategory, oldModel);
+  const newModel = allocation.name;
+  const fallbackAllocated = allocation.fallbackAllocated;
 
   const titleR = replaceModel(product.title, oldModel, newModel);
   const seoTitleR = replaceModel(product.seoTitle, oldModel, newModel);
@@ -198,6 +271,7 @@ function planItem(product, categoryOverride, alloc) {
     alreadyRenamed: false,
     detectionSource: detection.source,
     knownModel: !!detection.knownModel,
+    fallbackAllocated,
     changedFields,
     replacementCounts: {
       title: titleR.count,
@@ -254,6 +328,11 @@ async function main() {
 
   await saveAllocation(opts.job, alloc);
 
+  // Per-category dictionary-capacity report. Counts are computed from the
+  // plan items (ready + needs_review) so the numbers reflect what apply
+  // could actually touch. Status-job consumes these directly.
+  const dictionaryCapacity = computeDictionaryCapacity(plan, alloc);
+
   const exportHash = await hashJobFile(opts.job, 'export');
   await writeJsonAtomic(opts.job, 'plan', {
     jobId: opts.job,
@@ -267,6 +346,7 @@ async function main() {
     categoryOverride: categoryOverride || null,
     totalItems: plan.length,
     counts,
+    dictionaryCapacity,
     plan,
   });
 
@@ -292,6 +372,17 @@ async function main() {
   console.log(`Skipped (already renamed):  ${counts.skipped_already_renamed}`);
   console.log(`Skipped (no model):         ${counts.skipped_no_model}`);
   console.log('======================================');
+  if (dictionaryCapacity.length > 0) {
+    console.log();
+    console.log('--- Dictionary capacity ---');
+    for (const s of dictionaryCapacity) {
+      console.log(`  ${s.category}: dict=${s.dictionarySize}, uniqueOldModels=${s.uniqueOldModels}, allocated=${s.allocatedNames}, fallbacks=${s.fallbackCount}`);
+      if (s.fallbackCount > 0) {
+        console.log(`    fallback examples: ${s.fallbackExamples.join(', ')}`);
+        console.log(`    WARNING: dictionary exhausted for category "${s.category}". Consider expanding the category dictionary before apply.`);
+      }
+    }
+  }
   console.log();
   console.log(`Next: npm run rename:v3:validate -- --job=${opts.job}`);
 }

@@ -104,6 +104,28 @@ async function showOne(jobId) {
   console.log(pad('skipped_already_renamed', skippedAlready));
   console.log(pad('skipped_no_model', skippedNoModel));
   console.log();
+  const dictionaryCapacity = planData?.dictionaryCapacity || [];
+  if (dictionaryCapacity.length > 0) {
+    console.log('--- Dictionary capacity ---');
+    let anyFallback = false;
+    for (const s of dictionaryCapacity) {
+      console.log(pad('category', s.category));
+      console.log(pad('  dictionary size', s.dictionarySize));
+      console.log(pad('  unique old models', s.uniqueOldModels));
+      console.log(pad('  allocated names', s.allocatedNames));
+      console.log(pad('  fallback names used', s.fallbackCount));
+      if (s.fallbackCount > 0) {
+        anyFallback = true;
+        console.log(pad('  fallback examples', (s.fallbackExamples || []).join(', ') || '(none)'));
+      }
+    }
+    if (anyFallback) {
+      console.log();
+      console.log('  WARNING: One or more categories exhausted their dictionary.');
+      console.log('  Consider expanding the category dictionary before apply.');
+    }
+    console.log();
+  }
   console.log('--- Validation ---');
   console.log(pad('canApply', validation?.canApply == null ? '(no validation)' : String(validation.canApply)));
   console.log(pad('duplicate titles', validation?.duplicates?.length || 0));

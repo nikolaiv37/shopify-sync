@@ -16,6 +16,13 @@ export async function loadAllocation(jobId) {
     keyToName: data.keyToName || {},
     usedByCategory: data.usedByCategory || {},
     nextIndex: data.nextIndex || {},
+    // Per-category list of names that were generated as "<base> 2",
+    // "<base> 3", ... because the dictionary was exhausted. Used for
+    // dictionary-capacity reporting in plan-job and status-job.
+    fallbacksByCategory: data.fallbacksByCategory || {},
+    // Per-key boolean: was this allocation a fallback? Lets plan-job stamp
+    // each item with fallbackAllocated without recomputing.
+    fallbackByKey: data.fallbackByKey || {},
   };
 }
 
@@ -31,21 +38,27 @@ function key(category, oldModel) {
 }
 
 /**
- * Return the new V3 controlled name for (category, oldModel). Allocates one
- * from the dictionary if this (category, oldModel) pair is new, then
- * persists in `alloc` (caller saves).
+ * Return the new V3 controlled name for (category, oldModel) along with a
+ * fallbackAllocated flag indicating whether the name was generated as a
+ * "<base> 2" suffix because the category dictionary was exhausted.
  *
- * Names are allocated round-robin across the dictionary; if every name has
- * been used, falls back to "<base> 2", "<base> 3", ... (this is rare — the
- * dictionaries are larger than typical per-job model counts).
+ * Returns: { name, fallbackAllocated }
+ *
+ * Allocations are persisted on `alloc` in-place; caller saves.
  */
 export function allocateName(alloc, category, oldModel) {
   const k = key(category, oldModel);
-  if (alloc.keyToName[k]) return alloc.keyToName[k];
+  if (alloc.keyToName[k]) {
+    return {
+      name: alloc.keyToName[k],
+      fallbackAllocated: !!(alloc.fallbackByKey && alloc.fallbackByKey[k]),
+    };
+  }
 
   const dict = getV3Dictionary(category);
   const used = new Set(alloc.usedByCategory[category] || []);
   let idx = alloc.nextIndex[category] || 0;
+  let fallbackAllocated = false;
 
   let chosen = null;
   for (let tries = 0; tries < dict.length; tries++) {
@@ -62,11 +75,23 @@ export function allocateName(alloc, category, oldModel) {
     while (used.has(`${base} ${suffix}`)) suffix++;
     chosen = `${base} ${suffix}`;
     idx = (alloc.nextIndex[category] || 0) + 1;
+    fallbackAllocated = true;
   }
 
   used.add(chosen);
   alloc.keyToName[k] = chosen;
   alloc.usedByCategory[category] = Array.from(used);
   alloc.nextIndex[category] = idx;
-  return chosen;
+
+  if (fallbackAllocated) {
+    alloc.fallbackByKey = alloc.fallbackByKey || {};
+    alloc.fallbackByKey[k] = true;
+    alloc.fallbacksByCategory = alloc.fallbacksByCategory || {};
+    alloc.fallbacksByCategory[category] = alloc.fallbacksByCategory[category] || [];
+    if (!alloc.fallbacksByCategory[category].includes(chosen)) {
+      alloc.fallbacksByCategory[category].push(chosen);
+    }
+  }
+
+  return { name: chosen, fallbackAllocated };
 }
