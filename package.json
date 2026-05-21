@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "node dashboardServer.js",
     "start": "node dashboardServer.js",
-    "build": "node --check dashboardServer.js && node --check api/index.js && node --check lib/dashboardApp.js && node --check lib/inventorySync.js && node --check sync.js",
+    "build": "node --check dashboardServer.js && node --check api/index.js && node --check lib/dashboardApp.js && node --check lib/inventorySync.js && node --check sync.js && node --check scripts/b2bcenter/verify-db.js && node --check lib/b2bcenterSync.js && node --check scripts/b2bcenter/sync.js",
     "vercel-build": "npm run build",
     "sync": "node sync.js all",
     "sync:megapap": "node sync.js megapap",
@@ -18,11 +18,17 @@
     "dry-run": "node sync.js all --dry-run",
     "dry-run:megapap": "node sync.js megapap --dry-run",
     "dry-run:b2bmarkt": "node sync.js b2bmarkt --dry-run",
+    "b2bcenter:verify-db": "node scripts/b2bcenter/verify-db.js",
+    "b2bcenter:dry-run": "node scripts/b2bcenter/sync.js all --dry-run",
+    "b2bcenter:dry-run:megapap": "node scripts/b2bcenter/sync.js megapap --dry-run",
+    "b2bcenter:dry-run:b2bmarkt": "node scripts/b2bcenter/sync.js b2bmarkt --dry-run",
     "dashboard": "node dashboardServer.js",
     "prices": "node update-prices.js",
     "prices:apply": "node update-prices.js --apply",
     "prices:b2b": "node update-prices.js b2bmarkt",
     "prices:megapap": "node update-prices.js megapap",
+    "prices:current-discount": "node scripts/apply-current-price-discount.js",
+    "prices:current-discount:apply": "node scripts/apply-current-price-discount.js --apply",
     "export:missing": "node export-missing-products.js",
     "export:batch": "node export-missing-products.js --out-base=missing-products-batch-1 --skip=0 --limit=20",
     "translate": "python3 translate_b2bmarkt_missing.py --input missing-products.csv --out-base translated-products --model openai/gpt-4.1-mini --fallback-model openai/gpt-4o-mini --max-concurrency 1",
@@ -59,6 +65,7 @@
     "rename:v3:rollback": "node scripts/product-renaming-v3/rollback-job.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
     "dotenv": "^16.4.5",
     "fast-xml-parser": "^4.5.0"
   }
