@@ -22,6 +22,8 @@
     "b2bcenter:dry-run": "node scripts/b2bcenter/sync.js all --dry-run",
     "b2bcenter:dry-run:megapap": "node scripts/b2bcenter/sync.js megapap --dry-run",
     "b2bcenter:dry-run:b2bmarkt": "node scripts/b2bcenter/sync.js b2bmarkt --dry-run",
+    "b2bcenter:apply:megapap": "node scripts/b2bcenter/sync.js megapap --apply",
+    "b2bcenter:apply:b2bmarkt": "node scripts/b2bcenter/sync.js b2bmarkt --apply",
     "dashboard": "node dashboardServer.js",
     "prices": "node update-prices.js",
     "prices:apply": "node update-prices.js --apply",

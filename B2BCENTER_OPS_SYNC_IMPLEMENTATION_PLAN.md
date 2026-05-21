@@ -463,8 +463,76 @@ dry-run-only module**. All changes to `lib/dashboardApp.js` are additive.
 - **Safety** — B2BCenter dashboard buttons only ever send `dryRun: true`; the
   server enforces it; no Supabase writes; service-role key never reaches HTML/JSON.
 
-**Apply mode remains a future phase.** Next: Phase 3 — guarded apply/write mode
-with the per-row `quantity=eq.<expected>` snapshot guard from §7.
+## 17. Phase 3 — Guarded CLI Apply Implemented (2026-05-21)
+
+Guarded apply/write mode is implemented **for the CLI only**. The dashboard
+remains dry-run-only (its Apply button is still disabled, and `/api/sync`
+still rejects `dryRun !== true` for `target: "b2bcenter"`).
+
+**Apply scope:** updates `products.quantity` **only**. Never price, category,
+name/title, description, image, manufacturer, sku, tenant_id, is_visible, or any
+other column. No product creation. No auto-archive. Archived products and feed
+SKUs missing from the portal are skipped + reported, never written.
+
+**Apply commands (CLI only):**
+- `npm run b2bcenter:apply:megapap -- --confirm`
+- `npm run b2bcenter:apply:b2bmarkt -- --confirm`
+- Add `--allow-large-apply` when the planned change exceeds the threshold:
+  `npm run b2bcenter:apply:megapap -- --confirm --allow-large-apply`
+
+**Safety gates:**
+- `--apply` without `--confirm` → blocked, exit 1, no writes.
+- `supplierKey "all"` with `--apply` → blocked, exit 1. Apply one supplier at a time.
+- **Change threshold** — `plannedChangePct = planned / activeProducts * 100`.
+  Env var `B2BCENTER_MAX_CHANGE_PCT` (default **40**). If exceeded, apply is
+  blocked (exit 1, no writes, a blocked report is still written) unless
+  `--allow-large-apply` is passed. Current dry-runs are ~57% (megapap) /
+  ~48% (b2bmarkt), so apply currently requires `--allow-large-apply`.
+- **Snapshot guard** — each row is updated with
+  `update({ quantity }).eq('id').eq('tenant_id').eq('manufacturer').eq('quantity', currentQuantity).eq('is_visible', true).select()`.
+  1 row back → `updated`; 0 rows → `conflictSkipped` (drift, not fatal);
+  error → `errors`. No unguarded updates. Updates are sequential in v1.
+- Service-role key is never logged.
+
+**Reports:** `logs/b2bcenter-<supplier>-APPLY-<timestamp>.json` + `.log`, with a
+`safety` block (`confirm`, `allowLargeApply`, `maxChangePct`, `plannedChangePct`,
+`thresholdBlocked`), full counts incl. `conflictSkipped`, `appliedPreview`,
+`conflictPreview`, and `errorDetail`.
+
+## 18. Phase 4 — Dashboard Apply Enabled (2026-05-21)
+
+The first real CLI apply completed successfully for both suppliers
+(Megapap updated 1727, B2BMarkt updated 3554; 0 conflicts, 0 errors). With apply
+proven safe, the guarded apply is now available from the password-protected
+dashboard. All changes to `lib/dashboardApp.js` are additive; the engine's
+threshold and snapshot-guard logic is unchanged.
+
+**UI:** the B2BCenter cards now show a real **Apply Sync** button (amber/warning
+style) alongside Dry Run. The disabled "Apply later" placeholder is gone. Card
+meta: `Supabase · Stock only · SKU match · Quantity only`.
+
+**Confirmation flow:** clicking Apply Sync shows a `window.confirm` dialog naming
+the supplier/manufacturer and stating that only `quantity` is updated (not price,
+category, name, image, or visibility) and to dry-run first. Cancel → no request.
+
+**Dashboard apply payload:**
+```json
+{ "target": "b2bcenter", "supplierKey": "megapap" | "b2bmarkt",
+  "dryRun": false, "confirm": true, "allowLargeApply": true }
+```
+Dry-run payload is unchanged (`dryRun: true`, no confirm). `allowLargeApply: true`
+is sent only after the operator confirms the dialog — the engine still records
+`plannedChangePct` / `maxChangePct` / `thresholdBlocked` in the report.
+
+**Server-side safety gates (`/api/sync`, `target: "b2bcenter"`):**
+- `dryRun: false` without `confirm: true` → HTTP 400, no run.
+- `supplierKey: "all"` with apply → HTTP 400 (only `megapap` / `b2bmarkt` valid).
+- Shopify path and B2BCenter dry-run path are unchanged and backward compatible.
+- Single-run lock, logs/reports, quantity-only writes, snapshot guard, and
+  tenant/manufacturer scoping all preserved.
+
+Recent Runs shows B2BCenter dry-runs, B2BCenter applies, and Shopify runs
+together, labelled `B2BCenter · …` / `Shopify · …`.
 
 ---
 
