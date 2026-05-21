@@ -21,6 +21,7 @@
 
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 
 const TABLE = 'products';
 const PAGE_SIZE = 1000;
@@ -65,6 +66,8 @@ async function main() {
 
   const supabase = createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    // Node 20 has no native WebSocket; provide `ws` so supabase-js loads cleanly.
+    realtime: { transport: WebSocket },
   });
 
   // --- 1. Probe column existence ---------------------------------------

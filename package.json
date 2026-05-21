@@ -69,6 +69,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",
     "dotenv": "^16.4.5",
-    "fast-xml-parser": "^4.5.0"
+    "fast-xml-parser": "^4.5.0",
+    "ws": "^8.20.1"
   }
 }
