@@ -323,7 +323,82 @@ def parse_args():
     parser.add_argument("--category", default=None, help="B2BMarkt category name for mapping (e.g. Σαλόνια - γωνίες)")
     parser.add_argument("--all-categories", action="store_true", help="Use per-product category mapping from JSON source")
     parser.add_argument("--category-map", default=None, help="Path to category mapping JSON file")
+    parser.add_argument("--scraped-new-products", dest="scraped_new_products", action="store_true",
+                        help="Scraped new-products mode: fall back to English-keyed BG category map; "
+                             "backfill missing Variant Price from JSON retail/market price; "
+                             "split output into <base>-clean.csv (importable only) and <base>-review.csv "
+                             "(missing price / fallback title / unmappable category).")
     return parser.parse_args()
+
+
+# English breadcrumb category → (Bulgarian Type, [Bulgarian tags]). Used only when
+# --scraped-new-products is set and the source category is not in the JSON map.
+ENGLISH_TO_BG_CATEGORY = {
+    "Set Dining Tables":         ("Градински трапезни комплекти", ["Градина", "Градински мебели", "Градински трапезни комплекти"]),
+    "Wardrobes":                 ("Гардероби", ["Гардероби"]),
+    "Stools":                    ("Табуретки", ["Табуретки"]),
+    "Dechchair":                 ("Шезлонги", ["Градина", "Градински мебели", "Шезлонги"]),
+    "Sunbeds":                   ("Шезлонги", ["Градина", "Градински мебели", "Шезлонги"]),
+    "Bences":                    ("Пейки", ["Градина", "Градински мебели", "Пейки"]),
+    "Pillows":                   ("Възглавници", ["Възглавници"]),
+    "Sofa - Corner sofa":        ("Ъглови дивани", ["Дивани", "Ъглови дивани"]),
+    "Visitor's Chairs":          ("Посетителски столове", ["Офис мебели", "Посетителски столове"]),
+    "Set Sofa":                  ("Комплекти мека мебел", ["Дивани", "Комплекти мека мебел"]),
+    "Office Chairs":             ("Офис столове", ["Офис мебели", "Офис столове"]),
+    "Umbrellas-Bases":           ("Чадъри и основи", ["Градина", "Градински мебели", "Чадъри"]),
+    "Spare Parts":               ("Резервни части", ["Резервни части"]),
+    "Armchairs":                 ("Фотьойли", ["Фотьойли"]),
+    "Spare Parts for sunbeds":   ("Резервни части за шезлонги", ["Резервни части", "Шезлонги"]),
+    "Tables":                    ("Маси", ["Маси"]),
+    "Swings-Nests":              ("Люлки", ["Градина", "Люлки"]),
+    "Ceiling lighting":          ("Таванско осветление", ["Осветление", "Таванско осветление"]),
+    "Coffee Tables":             ("Холни маси", ["Маси", "Холни маси"]),
+    "Floor lamps":               ("Подови лампи", ["Осветление", "Подови лампи"]),
+    "Desk lamps":                ("Настолни лампи", ["Осветление", "Настолни лампи"]),
+    "Wall decor":                ("Декорация за стена", ["Декорация", "Декорация за стена"]),
+    "Wall lighting":             ("Стенно осветление", ["Осветление", "Стенно осветление"]),
+    "Set beds with mattresses":  ("Спални комплекти с матраци", ["Спалня", "Легла", "Матраци"]),
+    "Dinning sets":              ("Трапезни комплекти", ["Трапезни комплекти"]),
+    "Tables Bases":              ("Основи за маси", ["Маси", "Основи за маси"]),
+    "Sofas":                     ("Дивани", ["Дивани"]),
+    "Beds":                      ("Легла", ["Спалня", "Легла"]),
+    "Mirrors":                   ("Огледала", ["Декорация", "Огледала"]),
+    "Buffets":                   ("Бюфети", ["Бюфети", "Мебели за дневна"]),
+    "Drawers-Toilets":           ("Тоалетки", ["Спалня", "Тоалетки"]),
+    "Chairs-Armchairs":          ("Столове и фотьойли", ["Столове", "Фотьойли"]),
+    "STUDENT SETS":              ("Ученически комплекти", ["Ученически комплекти"]),
+    "Drawers":                   ("Скринове", ["Скринове"]),
+    "Beach chairs":              ("Плажни столове", ["Градина", "Плажни столове"]),
+    "Flower pot":                ("Саксии", ["Декорация", "Саксии"]),
+    "Tabletop decor":            ("Декорация за маса", ["Декорация", "Декорация за маса"]),
+    "Bar stools":                ("Бар столове", ["Бар столове"]),
+    "Floor Decoration":          ("Подова декорация", ["Декорация", "Подова декорация"]),
+    "HPL desktops":              ("HPL плотове", ["Маси", "HPL плотове"]),
+    "Toppers":                   ("Топ матраци", ["Спалня", "Топ матраци"]),
+}
+
+# Recognise translator fallback titles, e.g. "Продукт 0535924" / "Детски продукт 9995656"
+FALLBACK_TITLE_RE = re.compile(r"^\s*(?:Детски\s+)?Продукт\s+\S+\s*$", re.IGNORECASE)
+
+
+def normalize_price_str(val):
+    """Normalize a price string. '2,103.66' -> '2103.66'; '' -> ''. Returns string."""
+    if val is None:
+        return ""
+    s = str(val).strip()
+    if not s:
+        return ""
+    # Drop thousands separators like '2,103.66' (when the comma is a thousands sep, not a decimal).
+    # Strategy: if there is both a comma AND a dot, the comma is thousands → drop it.
+    # If only commas (Euro decimal), convert the last comma to a dot.
+    if "," in s and "." in s:
+        s = s.replace(",", "")
+    elif "," in s and "." not in s:
+        s = s.replace(",", ".")
+    try:
+        return f"{float(s):.2f}"
+    except (ValueError, TypeError):
+        return ""
 
 
 def derive_output_path(input_path):
@@ -395,8 +470,27 @@ def main():
     weights = {}
     wholesale_prices = {}
     sku_categories = {}
+    sku_retail_prices = {}   # used only in --scraped-new-products mode
+    sku_market_prices = {}   # used only in --scraped-new-products mode
     if weight_source:
         weights, wholesale_prices = load_product_data(weight_source)
+        # Pull retail/market prices for the scraped-new-products price backfill
+        if args.scraped_new_products:
+            try:
+                with open(weight_source, "r", encoding="utf-8") as _f:
+                    _jd = json.load(_f)
+                for _p in _jd.get("products", []):
+                    _sku = (_p.get("sku") or "").strip()
+                    if not _sku:
+                        continue
+                    rp = normalize_price_str(_p.get("retail_price"))
+                    mp = normalize_price_str(_p.get("market_price"))
+                    if rp:
+                        sku_retail_prices[_sku] = rp
+                    if mp:
+                        sku_market_prices[_sku] = mp
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass
         # Also load per-product source categories from JSON for all-categories mode
         if args.all_categories:
             try:
@@ -480,6 +574,12 @@ def main():
                     sku = row.get("Variant SKU", "").strip()
                     if sku in wholesale_prices:
                         val = f"{wholesale_prices[sku] * B2BMARKT_PRICE_MULTIPLIER:.2f}"
+                    elif args.scraped_new_products:
+                        # Normalize whatever the translator wrote; backfill from JSON retail/market
+                        normalized = normalize_price_str(val)
+                        if not normalized:
+                            normalized = sku_retail_prices.get(sku, "") or sku_market_prices.get(sku, "")
+                        val = normalized
 
                 # Step 1: clean text fields
                 if field in FIELDS_CLEANED:
@@ -526,7 +626,11 @@ def main():
                     # Per-product category mapping
                     sku = new_row.get("Variant SKU", "").strip()
                     source_cat = sku_categories.get(sku, "")
-                    if source_cat and source_cat in category_map:
+                    if args.scraped_new_products and source_cat and source_cat not in category_map and source_cat in ENGLISH_TO_BG_CATEGORY:
+                        _typ, _tags = ENGLISH_TO_BG_CATEGORY[source_cat]
+                        new_row["Type"] = _typ
+                        new_row["Tags"] = ", ".join(_tags)
+                    elif source_cat and source_cat in category_map:
                         raw = category_map[source_cat]
                         prod_mapping, _ = normalize_category_mapping(raw)
                         if prod_mapping:
@@ -671,11 +775,80 @@ def main():
 
     output_rows = filtered_rows
 
+    # --- Scraped-new-products: split into importable (clean) vs review buckets ---
+    review_rows = []
+    review_summary = Counter()
+    if args.scraped_new_products:
+        # Group rows by handle, classify each handle by its product (first) row, then
+        # keep ALL rows of that handle (product + image-only) in the same bucket.
+        handle_order = []
+        rows_by_handle = OrderedDict()
+        for r in output_rows:
+            h = r.get("Handle", "")
+            if h not in rows_by_handle:
+                rows_by_handle[h] = []
+                handle_order.append(h)
+            rows_by_handle[h].append(r)
+
+        clean_rows = []
+        for h in handle_order:
+            grp = rows_by_handle[h]
+            prod_row = grp[0]
+            title = prod_row.get("Title", "").strip()
+            price = prod_row.get("Variant Price", "").strip()
+            tags  = prod_row.get("Tags", "").strip()
+            typ   = prod_row.get("Type", "").strip()
+
+            reasons = []
+            if not title or FALLBACK_TITLE_RE.match(title):
+                reasons.append("fallback_title")
+            if not price:
+                reasons.append("missing_price")
+            if not tags:
+                reasons.append("missing_tags")
+            if not typ or typ.startswith("[L"):
+                reasons.append("unmapped_category")
+
+            if reasons:
+                for reason in reasons:
+                    review_summary[reason] += 1
+                # Append a BlockReason column for the review CSV only
+                for rr in grp:
+                    rr_copy = dict(rr)
+                    rr_copy["BlockReason"] = ";".join(reasons) if rr is prod_row else ""
+                    review_rows.append(rr_copy)
+            else:
+                clean_rows.extend(grp)
+
+        # Importable CSV: replace the default output with the filtered set.
+        output_rows = clean_rows
+
+        review_path = output_path.replace("-clean.csv", "-review.csv")
+        if review_rows:
+            with open(review_path, "w", encoding="utf-8", newline="") as f:
+                review_fields = list(fieldnames) + ["BlockReason"]
+                writer = csv.DictWriter(f, fieldnames=review_fields, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(review_rows)
+
     # Write output
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(output_rows)
+
+    if args.scraped_new_products:
+        print()
+        print("  --- Scraped-new-products partition ---")
+        importable_handles = len({r.get("Handle", "") for r in output_rows if r.get("Variant SKU", "").strip()})
+        review_handles = len({r.get("Handle", "") for r in review_rows if r.get("Variant SKU", "").strip()})
+        print(f"  Importable products:     {importable_handles}")
+        print(f"  Review (blocked):        {review_handles}")
+        for reason, count in review_summary.most_common():
+            print(f"    blocked.{reason}:      {count}")
+        if review_rows:
+            print(f"  Review CSV:              {output_path.replace('-clean.csv', '-review.csv')}")
+        print()
 
     # QA Report
     total_rows = len(output_rows)

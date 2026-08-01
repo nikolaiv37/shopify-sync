@@ -75,6 +75,72 @@ def to_str(val):
     return str(val)
 
 
+FEED_COPY_KEYS = ("title_bg", "seo_title_bg", "seo_description_bg", "description_bg")
+
+
+def is_invalid_bg_text(val):
+    """Reject obvious JSON-leak / wrapper-leak content for short fields."""
+    if not val:
+        return True
+    s = val.strip()
+    if not s:
+        return True
+    if s.startswith("{") or s.startswith("["):
+        return True
+    if any(k in s for k in FEED_COPY_KEYS):
+        return True
+    return False
+
+
+def looks_like_html(val):
+    if not val:
+        return False
+    return bool(re.search(r"<(?:p|ul|li|strong|br)\b", val, re.IGNORECASE))
+
+
+def parse_feed_copy_response(raw):
+    """Robustly extract the four BG fields from a feed_copy LLM response.
+
+    Handles JSON-string, nested string/dict wrappers (up to 3 levels), a dict with
+    the keys, a single-key wrapper, or — as a last resort — per-field regex
+    extraction. Always returns a dict with all four keys present (strings).
+    """
+    out = {k: "" for k in FEED_COPY_KEYS}
+    if not raw:
+        return out
+    candidate = raw
+    for _ in range(3):
+        if isinstance(candidate, str):
+            stripped = candidate.strip()
+            if not stripped:
+                break
+            try:
+                candidate = json.loads(stripped)
+                continue
+            except Exception:
+                break
+        if isinstance(candidate, dict):
+            if len(candidate) == 1 and not any(k in candidate for k in FEED_COPY_KEYS):
+                only = next(iter(candidate.values()))
+                if isinstance(only, (dict, str)):
+                    candidate = only
+                    continue
+            break
+        break
+    if isinstance(candidate, dict):
+        for k in FEED_COPY_KEYS:
+            out[k] = to_str(candidate.get(k, ""))
+    else:
+        for k in FEED_COPY_KEYS:
+            m = re.search(rf'"{k}"\s*:\s*"((?:[^"\\]|\\.)*)"', raw, re.DOTALL)
+            if m:
+                try:
+                    out[k] = json.loads(f'"{m.group(1)}"')
+                except Exception:
+                    out[k] = m.group(1)
+    return out
+
+
 def hash_context(text):
     if text is None:
         text = ""
@@ -370,6 +436,18 @@ class OpenRouterTranslator:
             base.append("SEO description: Bulgarian, 140-160 chars. Persuasive but factual. No fake claims.")
         elif mode == "alt_text":
             base.append("Image alt text: Simple Bulgarian. Format: '[Product title] - снимка [number]'.")
+        elif mode == "feed_copy":
+            base.append("Feed copy mode: input primary_text is a JSON string with keys: title, description, category.")
+            base.append("Return the translation/adaptation as a JSON-encoded STRING with this exact shape:")
+            base.append('{"title_bg":"...","seo_title_bg":"...","seo_description_bg":"...","description_bg":"..."}')
+            base.append("That JSON object MUST be the value of `t` (a string), inside {\"items\":[{\"i\":0,\"t\":\"<json-string>\"}]}.")
+            base.append("title_bg: Bulgarian, SEO-friendly, product type first, max ~70 chars, no Greek, no model/supplier codes.")
+            base.append("seo_title_bg: Bulgarian, max 70 chars, product type + main feature + dimension/color if useful.")
+            base.append("seo_description_bg: Bulgarian, 140-160 chars, persuasive but factual. No fake claims.")
+            base.append("description_bg: Bulgarian clean HTML — '<p><strong>intro</strong></p><ul><li><strong>Label:</strong> value</li></ul>'.")
+            base.append("Adapt the source description: keep dimensions, materials, colors EXACTLY. Do NOT invent features.")
+            base.append("Translate colors: white=бял, oak=дъб, walnut=орех, grey=сив, black=черен, natural=естествен.")
+            base.append("Keep MDF, PVC, LED, ABS, PP, PE, RAL and dimensions like 90x190. No Greek anywhere in output.")
         if repair_reason == "greek":
             base.append("REPAIR: Previous output had Greek letters. Ensure Bulgarian only, no Greek characters.")
         return "\n".join(base)
@@ -412,7 +490,7 @@ def translate_product(translator, product, idx):
     bg_title = results.get("title")
     if bg_title is not None and not isinstance(bg_title, str):
         bg_title = to_str(bg_title)
-    if not bg_title or contains_greek(bg_title):
+    if not bg_title or contains_greek(bg_title) or is_invalid_bg_text(bg_title):
         bg_title = f"Продукт {sku}"
     bg_description = results.get("description") or ""
     if bg_description is not None and not isinstance(bg_description, str):
@@ -449,6 +527,90 @@ def translate_product(translator, product, idx):
         "volume_m3": to_str(product.get("volume_m3", "")),
         "filters": to_str(product.get("filters", "")),
         "attributes": to_str(product.get("attributes", "")),
+    }
+
+
+def _build_fast_description_bg(bg_title, category, weight):
+    """Local short Bulgarian HTML description — no LLM call."""
+    bullets = []
+    if category:
+        bullets.append(f"<li><strong>Категория:</strong> {category}</li>")
+    if weight:
+        bullets.append(f"<li><strong>Тегло:</strong> {weight} кг</li>")
+    bullets.append("<li><strong>Доставка:</strong> от MebelCenter</li>")
+    return f"<p><strong>{bg_title}</strong></p><ul>{''.join(bullets)}</ul>"
+
+
+def translate_product_feed_copy(translator, product, idx):
+    """Single-call mode for Megapap products.
+
+    Sends title + description + category to the LLM in ONE call and receives
+    title_bg / seo_title_bg / seo_description_bg / description_bg. No per-image
+    alt LLM call (alt text reuses bg_title). Output shape identical to
+    translate_product() so the clean step keeps working unchanged.
+    """
+    sku = to_str(product.get("sku", ""))
+    title = to_str(product.get("title", ""))
+    description = to_str(product.get("description", ""))
+    category = to_str(product.get("category", ""))
+    weight = to_str(product.get("weight_kg", ""))
+    images_raw = product.get("images", "")
+    if isinstance(images_raw, list):
+        images = [to_str(img) for img in images_raw if to_str(img)]
+    elif isinstance(images_raw, str):
+        images = [img.strip() for img in images_raw.split(";") if img.strip()]
+    else:
+        images = []
+
+    primary_payload = json.dumps({
+        "title": title,
+        "description": description[:3000],
+        "category": category,
+    }, ensure_ascii=False)
+    items = [{"key": "copy", "primary_text": primary_payload, "context_text": f"sku={sku}; weight={weight}kg"}]
+    results, errors, _ = translator.translate_batch("feed_copy", items)
+    raw = to_str(results.get("copy"))
+
+    parsed = parse_feed_copy_response(raw)
+    bg_title = parsed["title_bg"]
+    bg_seo_title = parsed["seo_title_bg"]
+    bg_seo_description = parsed["seo_description_bg"]
+    bg_description = parsed["description_bg"]
+
+    if contains_greek(bg_title) or is_invalid_bg_text(bg_title):
+        bg_title = f"Продукт {sku}"
+    if contains_greek(bg_seo_title) or is_invalid_bg_text(bg_seo_title):
+        bg_seo_title = bg_title[:70]
+    if contains_greek(bg_seo_description) or is_invalid_bg_text(bg_seo_description):
+        bg_seo_description = bg_title[:160]
+    if contains_greek(bg_description) or is_invalid_bg_text(bg_description):
+        bg_description = _build_fast_description_bg(bg_title, category, weight)
+    elif not looks_like_html(bg_description):
+        bg_description = f"<p>{bg_description.strip()}</p>"
+
+    alt_texts = {img: f"{bg_title} - снимка {i}" for i, img in enumerate(images[:5], 1)}
+
+    return {
+        "sku": sku,
+        "supplier_sku": to_str(product.get("supplier_sku", "")),
+        "ean": to_str(product.get("ean", "")),
+        "title_original": title,
+        "title_bg": (bg_title or "")[:70],
+        "description_original": description,
+        "description_bg": bg_description or "",
+        "seo_title_bg": (bg_seo_title or bg_title or "")[:70],
+        "seo_description_bg": (bg_seo_description or "")[:160],
+        "category_original": category,
+        "images": images,
+        "alt_texts": alt_texts,
+        "wholesale_price_without_vat": to_str(product.get("wholesale_price_without_vat", "")),
+        "retail_price_with_vat": to_str(product.get("retail_price_with_vat", "")),
+        "quantity": to_str(product.get("quantity", "")),
+        "weight_kg": to_str(product.get("weight_kg", "")),
+        "volume_m3": to_str(product.get("volume_m3", "")),
+        "filters": to_str(product.get("filters", "")),
+        "attributes": to_str(product.get("attributes", "")),
+        "_mode": "feed_copy",
     }
 
 
@@ -533,8 +695,11 @@ def main():
     parser.add_argument("--max-concurrency", type=int, default=1, help="Max concurrent translations")
     parser.add_argument("--max-retries", type=int, default=5, help="Max retries per request")
     parser.add_argument("--retry-backoff", type=float, default=1.5, help="Retry backoff multiplier")
-    parser.add_argument("--limit-products", type=int, help="Limit number of products to process")
+    parser.add_argument("--limit-products", "--limit", dest="limit_products", type=int, help="Limit number of products to process")
     parser.add_argument("--out-base", default="translated-megapap-products", help="Output base name")
+    parser.add_argument("--feed-product-copy", dest="feed_product_copy", action="store_true",
+                        help="Single-call mode: title+description+category+seo in one LLM call; reuse title for alt-text. "
+                             "~5x fewer API calls per product.")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
@@ -569,20 +734,30 @@ def main():
         products = products[: args.limit_products]
 
     print(f"Products to translate: {len(products)}")
+    if args.feed_product_copy:
+        print("Mode: FEED PRODUCT COPY (1 LLM call/product; title+desc+seo; reused alt text)")
+    _translate_fn = translate_product_feed_copy if args.feed_product_copy else translate_product
 
     translated_products = []
     errors_log = []
 
     with ThreadPoolExecutor(max_workers=args.max_concurrency) as executor:
-        futures = {executor.submit(translate_product, translator, p, idx): (idx, p) for idx, p in enumerate(products)}
+        futures = {}
+        for idx, p in enumerate(products):
+            t0 = time.time()
+            fut = executor.submit(_translate_fn, translator, p, idx)
+            futures[fut] = (idx, p, t0)
         for future in as_completed(futures):
-            idx, product = futures[future]
+            idx, product, t0 = futures[future]
             try:
                 result = future.result()
                 translated_products.append(result)
-                print(f"  [{idx + 1}/{len(products)}] SKU {result['sku']}: OK")
+                dt = time.time() - t0
+                mode_tag = result.get("_mode", "full")
+                print(f"  [{idx + 1}/{len(products)}] SKU {result['sku']}: OK ({dt:.1f}s, mode={mode_tag})")
             except Exception as e:
-                errors_log.append({"sku": product.get("sku", ""), "error": str(e)})
+                import traceback as _tb
+                errors_log.append({"sku": product.get("sku", ""), "error": str(e), "traceback": _tb.format_exc()})
                 print(f"  [{idx + 1}/{len(products)}] SKU {product.get('sku', '')}: ERROR - {e}")
 
     print(f"\nTranslated: {len(translated_products)}")

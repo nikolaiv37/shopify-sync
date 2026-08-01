@@ -2,126 +2,526 @@
   "Indoor furniture > Dining set": {
     "default": {
       "type": "Трапезни комплекти",
-      "tags": ["Трапезни комплекти"]
+      "tags": [
+        "Трапезни комплекти"
+      ]
     },
     "rules": []
   },
   "Indoor furniture > Wardrobes": {
     "default": {
       "type": "Гардероби",
-      "tags": ["Гардероби"]
+      "tags": [
+        "Гардероби"
+      ]
     },
     "rules": []
   },
   "Indoor furniture > Coffee tables": {
     "default": {
       "type": "Маси за хол",
-      "tags": ["Маси за хол"]
+      "tags": [
+        "Маси за хол"
+      ]
     },
     "rules": []
   },
   "Indoor furniture > Beds": {
     "default": {
       "type": "Легла",
-      "tags": ["Легла"]
+      "tags": [
+        "Легла"
+      ]
     },
     "rules": []
   },
   "Indoor furniture > Bookcases": {
     "default": {
       "type": "Библиотеки",
-      "tags": ["Библиотеки"]
+      "tags": [
+        "Библиотеки"
+      ]
     },
     "rules": []
   },
   "Indoor furniture > Bedside tables": {
     "default": {
       "type": "Нощни шкафчета",
-      "tags": ["Нощни шкафчета"]
+      "tags": [
+        "Нощни шкафчета"
+      ]
     },
     "rules": []
   },
   "Indoor furniture > Tables": {
     "default": {
       "type": "Маси",
-      "tags": ["Маси"]
+      "tags": [
+        "Маси"
+      ]
     },
     "rules": []
   },
   "Indoor furniture > Chairs - Dining armchairs": {
     "default": {
       "type": "Трапезни столове",
-      "tags": ["Столове и фотьойли"]
+      "tags": [
+        "Столове и фотьойли"
+      ]
     },
     "rules": []
   },
   "Indoor furniture > Shoe racks": {
     "default": {
       "type": "Етажерки за обувки",
-      "tags": ["Етажерки за обувки"]
+      "tags": [
+        "Етажерки за обувки"
+      ]
     },
     "rules": []
   },
   "Indoor furniture > Chests of drawers": {
     "default": {
       "type": "Скрини",
-      "tags": ["Скрини"]
+      "tags": [
+        "Скрини"
+      ]
     },
     "rules": []
   },
   "Indoor furniture > TV furniture": {
     "default": {
       "type": "ТВ мебели",
-      "tags": ["ТВ мебели"]
+      "tags": [
+        "ТВ мебели"
+      ]
     },
     "rules": []
   },
   "Indoor furniture > Children's Room": {
     "default": {
       "type": "Детска стая",
-      "tags": ["Детска стая"]
+      "tags": [
+        "Детска стая"
+      ]
     },
     "rules": []
   },
   "Office furniture > Desks": {
     "default": {
       "type": "Бюра",
-      "tags": ["Бюра"]
+      "tags": [
+        "Бюра"
+      ]
     },
     "rules": []
   },
   "Office furniture > Office chairs": {
     "default": {
       "type": "Офис столове",
-      "tags": ["Офис столове"]
+      "tags": [
+        "Офис столове"
+      ]
     },
     "rules": []
   },
   "Lighting > Ceiling lights": {
     "default": {
       "type": "Тавани лампи",
-      "tags": ["Осветление"]
+      "tags": [
+        "Осветление"
+      ]
     },
     "rules": []
   },
   "Lighting > Table lamps": {
     "default": {
       "type": "Нощни лампи",
-      "tags": ["Осветление"]
+      "tags": [
+        "Осветление"
+      ]
     },
     "rules": []
   },
   "Lighting > Floor lamps": {
     "default": {
       "type": "Подови лампи",
-      "tags": ["Осветление"]
+      "tags": [
+        "Осветление"
+      ]
     },
     "rules": []
   },
   "Garden furniture > Umbrella stands": {
     "default": {
       "type": "Градински мебели",
-      "tags": ["Градински мебели"]
+      "tags": [
+        "Градински мебели"
+      ]
+    },
+    "rules": []
+  },
+  "Other products > Linens > Duvet cover set": {
+    "default": {
+      "type": "Спално бельо - комплекти",
+      "tags": [
+        "Спално бельо"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Auxiliary tables": {
+    "default": {
+      "type": "Помощни маси",
+      "tags": [
+        "Помощни маси"
+      ]
+    },
+    "rules": []
+  },
+  "Other products > Linens > Pillowcases": {
+    "default": {
+      "type": "Калъфки за възглавници",
+      "tags": [
+        "Спално бельо"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Wall shelves": {
+    "default": {
+      "type": "Стенни рафтове",
+      "tags": [
+        "Рафтове"
+      ]
+    },
+    "rules": []
+  },
+  "Other products > Linens > Bed sheets": {
+    "default": {
+      "type": "Чаршафи",
+      "tags": [
+        "Спално бельо"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Consoles": {
+    "default": {
+      "type": "Конзоли",
+      "tags": [
+        "Конзоли"
+      ]
+    },
+    "rules": []
+  },
+  "Other products > Microelectric devices": {
+    "default": {
+      "type": "Електроуреди",
+      "tags": [
+        "Електроуреди"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Buffets": {
+    "default": {
+      "type": "Бюфети",
+      "tags": [
+        "Бюфети"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Mirrors": {
+    "default": {
+      "type": "Огледала",
+      "tags": [
+        "Огледала",
+        "Декорация"
+      ]
+    },
+    "rules": []
+  },
+  "Garden furniture > Garden gazebos": {
+    "default": {
+      "type": "Градински перголи",
+      "tags": [
+        "Градина",
+        "Градински мебели",
+        "Перголи"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Kitchen furniture": {
+    "default": {
+      "type": "Кухненски мебели",
+      "tags": [
+        "Кухненски мебели"
+      ]
+    },
+    "rules": []
+  },
+  "Garden furniture > Catering - Conference Furniture > Catering - Conference Tables": {
+    "default": {
+      "type": "Маси за заведения",
+      "tags": [
+        "Маси за заведения"
+      ]
+    },
+    "rules": []
+  },
+  "Other products > Household stuff > Bathroom shelves": {
+    "default": {
+      "type": "Етажерки за баня",
+      "tags": [
+        "Баня"
+      ]
+    },
+    "rules": []
+  },
+  "Decoration > Paintings": {
+    "default": {
+      "type": "Картини",
+      "tags": [
+        "Декорация",
+        "Картини"
+      ]
+    },
+    "rules": []
+  },
+  "Decoration > Wall decoration": {
+    "default": {
+      "type": "Декорация за стена",
+      "tags": [
+        "Декорация"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Entrance furniture": {
+    "default": {
+      "type": "Мебели за антре",
+      "tags": [
+        "Антре"
+      ]
+    },
+    "rules": []
+  },
+  "Office furniture > Office Bookcases": {
+    "default": {
+      "type": "Офис библиотеки",
+      "tags": [
+        "Офис мебели",
+        "Библиотеки"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Coat Stands - Wall Hangers": {
+    "default": {
+      "type": "Закачалки",
+      "tags": [
+        "Закачалки"
+      ]
+    },
+    "rules": []
+  },
+  "Office furniture > Reception Desks": {
+    "default": {
+      "type": "Рецепции",
+      "tags": [
+        "Офис мебели",
+        "Рецепции"
+      ]
+    },
+    "rules": []
+  },
+  "Other products > Household stuff > Staircases": {
+    "default": {
+      "type": "Стълби",
+      "tags": [
+        "Стълби"
+      ]
+    },
+    "rules": []
+  },
+  "Other products > Household stuff > Ironing boards": {
+    "default": {
+      "type": "Дъски за гладене",
+      "tags": [
+        "Дъски за гладене"
+      ]
+    },
+    "rules": []
+  },
+  "Office furniture > Office spare parts": {
+    "default": {
+      "type": "Резервни части за офис мебели",
+      "tags": [
+        "Резервни части"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Bathroom furnishings > Washing Machine Cabinets": {
+    "default": {
+      "type": "Шкафове за пералня",
+      "tags": [
+        "Баня"
+      ]
+    },
+    "rules": []
+  },
+  "Other products > Household stuff > Dish racks": {
+    "default": {
+      "type": "Сушилници за съдове",
+      "tags": [
+        "Кухненски аксесоари"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Dressing Tables": {
+    "default": {
+      "type": "Тоалетки",
+      "tags": [
+        "Тоалетки"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Armchairs - Bed": {
+    "default": {
+      "type": "Кресла легло",
+      "tags": [
+        "Кресла легло"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Sofas - Bed": {
+    "default": {
+      "type": "Дивани легла",
+      "tags": [
+        "Дивани",
+        "Дивани легла"
+      ]
+    },
+    "rules": []
+  },
+  "Lighting > Children's ceiling lights": {
+    "default": {
+      "type": "Детски плафони",
+      "tags": [
+        "Осветление",
+        "Детска стая"
+      ]
+    },
+    "rules": []
+  },
+  "Garden furniture > Garden tables": {
+    "default": {
+      "type": "Градински маси",
+      "tags": [
+        "Градина",
+        "Градински мебели",
+        "Градински маси"
+      ]
+    },
+    "rules": []
+  },
+  "Other products > Household stuff > Clothes racks": {
+    "default": {
+      "type": "Простори за дрехи",
+      "tags": [
+        "Простори"
+      ]
+    },
+    "rules": []
+  },
+  "Office furniture > Office cabinets": {
+    "default": {
+      "type": "Офис шкафове",
+      "tags": [
+        "Офис мебели"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Bathroom furnishings > Bathroom Cabinets & Tall Units": {
+    "default": {
+      "type": "Шкафове за баня",
+      "tags": [
+        "Баня"
+      ]
+    },
+    "rules": []
+  },
+  "Garden furniture > Armchairs - Garden chairs": {
+    "default": {
+      "type": "Градински столове и фотьойли",
+      "tags": [
+        "Градина",
+        "Градински мебели",
+        "Градински столове"
+      ]
+    },
+    "rules": []
+  },
+  "Office furniture > Guest tables": {
+    "default": {
+      "type": "Посетителски маси",
+      "tags": [
+        "Офис мебели"
+      ]
+    },
+    "rules": []
+  },
+  "Garden furniture > Catering - Conference Furniture > Catering - Conference Chairs": {
+    "default": {
+      "type": "Столове за заведения",
+      "tags": [
+        "Столове за заведения"
+      ]
+    },
+    "rules": []
+  },
+  "Indoor furniture > Bedroom Chests of Drawers": {
+    "default": {
+      "type": "Скрини за спалня",
+      "tags": [
+        "Скрини"
+      ]
+    },
+    "rules": []
+  },
+  "Other products > Household stuff > Shopping trolley": {
+    "default": {
+      "type": "Пазарски колички",
+      "tags": [
+        "Аксесоари"
+      ]
+    },
+    "rules": []
+  },
+  "Office furniture > Office wardrobes": {
+    "default": {
+      "type": "Офис гардероби",
+      "tags": [
+        "Офис мебели",
+        "Гардероби"
+      ]
+    },
+    "rules": []
+  },
+  "Office furniture > Office drawers": {
+    "default": {
+      "type": "Офис контейнери",
+      "tags": [
+        "Офис мебели"
+      ]
     },
     "rules": []
   }

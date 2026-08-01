@@ -45,6 +45,7 @@
     "audit:europe:not-in-feed": "node scripts/audit_europe_not_in_feed.js --xml=b2bmarkt_updated.xml",
     "export:missing:megapap": "node scripts/export_missing_megapap_products.js --xml=megapap_en.xml",
     "pipeline:megapap": "bash scripts/run_megapap_pipeline.sh",
+    "pipeline:targeted": "bash scripts/run_targeted_codes_pipeline.sh",
     "clean:megapap": "python3 scripts/clean_megapap_import.py",
     "rename:export": "node scripts/product-renaming/export-products-for-rename.js",
     "rename:plan": "node scripts/product-renaming/generate-rename-plan.js",
@@ -64,12 +65,23 @@
     "rename:v3:validate": "node scripts/product-renaming-v3/validate-job.js",
     "rename:v3:apply": "node scripts/product-renaming-v3/apply-job.js",
     "rename:v3:status": "node scripts/product-renaming-v3/status-job.js",
-    "rename:v3:rollback": "node scripts/product-renaming-v3/rollback-job.js"
+    "rename:v3:rollback": "node scripts/product-renaming-v3/rollback-job.js",
+    "seo:gsc404:audit": "tsx scripts/seo/audit-gsc-404-redirects.ts",
+    "seo:gsc404:apply:dry": "tsx scripts/seo/apply-gsc-404-redirects.ts --dry-run",
+    "seo:gsc404:apply": "tsx scripts/seo/apply-gsc-404-redirects.ts --apply",
+    "seo:gsc404:check-access": "tsx scripts/seo/apply-gsc-404-redirects.ts --check-access",
+    "seo:gsc404:typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",
+    "cheerio": "^1.2.0",
     "dotenv": "^16.4.5",
     "fast-xml-parser": "^4.5.0",
     "ws": "^8.20.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3"
   }
 }

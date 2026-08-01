@@ -158,12 +158,21 @@ def find_suspicious(value):
     return found
 
 
+FALLBACK_TITLE_RE = re.compile(r"^\s*(?:Детски\s+)?Продукт\s+\S+\s*$", re.IGNORECASE)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Clean Megapap Shopify import CSV")
     parser.add_argument("--input", default="translated-megapap-products-shopify-import.csv", help="Input CSV path")
     parser.add_argument("--weight-source", default=None, help="JSON file with weight/price data")
     parser.add_argument("--category", default=None, help="Megapap category name for mapping (e.g. Indoor furniture > Beds)")
+    parser.add_argument("--all-categories", action="store_true",
+                        help="Per-product category mapping: read each product's category from the weight-source JSON "
+                             "(category_original) and map Type/Tags per product. Use instead of a single --category.")
     parser.add_argument("--category-map", default=None, help="Path to category mapping JSON file")
+    parser.add_argument("--review-split", dest="review_split", action="store_true",
+                        help="Split output into <base>-clean.csv (importable only) and <base>-review.csv "
+                             "(blocked: missing price / fallback title). Adds a BlockReason column to the review CSV.")
     return parser.parse_args()
 
 
@@ -219,9 +228,24 @@ def main():
 
     weights = {}
     wholesale_prices = {}
+    sku_categories = {}
     if weight_source:
         weights, wholesale_prices = load_product_data(weight_source)
         print(f"Loaded weights: {len(weights)} SKUs, wholesale prices: {len(wholesale_prices)} SKUs")
+        if args.all_categories:
+            try:
+                with open(weight_source, "r", encoding="utf-8") as _f:
+                    _jd = json.load(_f)
+                for _p in _jd.get("products", []):
+                    _sku = (_p.get("sku") or "").strip()
+                    if not _sku:
+                        continue
+                    _cat = (_p.get("category_original") or _p.get("category") or "").strip()
+                    if _cat:
+                        sku_categories[_sku] = _cat
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass
+            print(f"Loaded per-product categories: {len(sku_categories)} SKUs")
 
     # Load category mapping
     category_map = {}
@@ -306,7 +330,28 @@ def main():
 
                 new_row[field] = val
 
-            # Apply category mapping to Type and Tags on product rows
+            # Per-product category mapping (all-categories mode)
+            if idx == 0 and args.all_categories and category_map:
+                sku = new_row.get("Variant SKU", "").strip()
+                source_cat = sku_categories.get(sku, "")
+                if source_cat and source_cat in category_map:
+                    prod_mapping, _ = normalize_category_mapping(category_map[source_cat])
+                    if prod_mapping:
+                        rules = prod_mapping.get("rules", [])
+                        default = prod_mapping.get("default", {})
+                        matched_rule = None
+                        if rules:
+                            matched_rule, _ = match_rule(
+                                rules, new_row.get("Title", ""), new_row.get("Body (HTML)", ""), new_row.get("SEO Title", ""))
+                        if matched_rule:
+                            new_row["Type"] = matched_rule.get("type", default.get("type", ""))
+                            tags = matched_rule.get("tags", default.get("tags", []))
+                        else:
+                            new_row["Type"] = default.get("type", "")
+                            tags = default.get("tags", [])
+                        new_row["Tags"] = ", ".join(tags) if tags else ""
+
+            # Apply category mapping to Type and Tags on product rows (single --category mode)
             if idx == 0 and category_mapping:
                 rules = category_mapping.get("rules", [])
                 default = category_mapping.get("default", {})
@@ -333,11 +378,68 @@ def main():
 
             output_rows.append(new_row)
 
+    # --- Optional review/clean split (importable vs blocked) ---
+    review_rows = []
+    review_summary = Counter()
+    if args.review_split:
+        order = []
+        by_handle = OrderedDict()
+        for r in output_rows:
+            h = r.get("Handle", "")
+            if h not in by_handle:
+                by_handle[h] = []
+                order.append(h)
+            by_handle[h].append(r)
+
+        clean_rows = []
+        for h in order:
+            grp = by_handle[h]
+            prod_row = grp[0]
+            title = prod_row.get("Title", "").strip()
+            price = prod_row.get("Variant Price", "").strip()
+            reasons = []
+            if not title or FALLBACK_TITLE_RE.match(title):
+                reasons.append("fallback_title")
+            if not price:
+                reasons.append("missing_price")
+            # Tags/Type are optional for Megapap (category map may be absent); don't block on them.
+            if reasons:
+                for reason in reasons:
+                    review_summary[reason] += 1
+                for rr in grp:
+                    rr_copy = dict(rr)
+                    rr_copy["BlockReason"] = ";".join(reasons) if rr is prod_row else ""
+                    review_rows.append(rr_copy)
+            else:
+                clean_rows.extend(grp)
+
+        output_rows = clean_rows
+        review_path = output_path.replace("-clean.csv", "-review.csv")
+        if review_rows:
+            with open(review_path, "w", encoding="utf-8", newline="") as f:
+                review_fields = list(fieldnames) + ["BlockReason"]
+                writer = csv.DictWriter(f, fieldnames=review_fields, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(review_rows)
+
     # Write output
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(output_rows)
+
+    if args.review_split:
+        importable_handles = len({r.get("Handle", "") for r in output_rows if r.get("Variant SKU", "").strip()})
+        review_handles = len({r.get("Handle", "") for r in review_rows if r.get("Variant SKU", "").strip()})
+        print()
+        print("  --- Review split ---")
+        print(f"  Importable products:     {importable_handles}")
+        print(f"  Review (blocked):        {review_handles}")
+        for reason, count in review_summary.most_common():
+            print(f"    blocked.{reason}:      {count}")
+        if review_rows:
+            print(f"  Review CSV:              {output_path.replace('-clean.csv', '-review.csv')}")
+        print()
 
     # QA Report
     total_rows = len(output_rows)
