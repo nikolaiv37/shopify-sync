@@ -18,7 +18,7 @@ export function App() {
         const current = getRoute();
         if (session.authenticated && current === 'login') {
           window.history.replaceState(null, '', appPath('/dashboard'));
-          setRoute('inventory');
+          setRoute('home');
         }
         if (!session.authenticated && current !== 'login') {
           window.history.replaceState(null, '', appPath('/'));

@@ -20,6 +20,7 @@ import 'dotenv/config';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { XMLParser } from 'fast-xml-parser';
+import { getMultiplier } from './lib/pricing/pricing-config.js';
 
 // ---------- Shopify auth (fill via .env — same as sync.js) ----------
 
@@ -56,8 +57,8 @@ const FEEDS = {
     productTag: 'Product',
     skuTag: 'ProductCode',
     sourcePriceTag: 'ZoneFourUnitPrice',
-    /** Applied to parsed source price before rounding to 2 decimals. */
-    priceMultiplier: 3.1,
+    /** Canonical multiplier — see lib/pricing/pricing-config.js. */
+    priceMultiplier: getMultiplier('b2bmarkt'),
   },
   megapap: {
     key: 'megapap',
@@ -67,7 +68,7 @@ const FEEDS = {
     productTag: 'product',
     skuTag: 'model',
     sourcePriceTag: 'wholesale_price_without_vat',
-    priceMultiplier: 1.7,
+    priceMultiplier: getMultiplier('megapap'), // canonical (× 2.5)
   },
 };
 

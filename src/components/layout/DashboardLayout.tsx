@@ -2,9 +2,10 @@ import type { ReactNode } from 'react';
 import { logout } from '../../lib/api';
 import { appPath } from '../../app/router';
 import { BrandLogo } from './BrandLogo';
+import { HomeIcon, InventoryIcon, MissingIcon, PricesIcon } from './NavIcons';
 
 type Props = {
-  active: 'inventory' | 'missing';
+  active: 'home' | 'inventory' | 'missing' | 'prices';
   eyebrow: string;
   title: string;
   subtitle: string;
@@ -30,18 +31,36 @@ export function DashboardLayout({ active, eyebrow, title, subtitle, wide = false
         </div>
         <nav className="nav" aria-label="Навигация">
           <button
-            className={`nav-item nav-button ${active === 'inventory' ? 'active' : ''}`}
+            className={`nav-item nav-button ${active === 'home' ? 'active' : ''}`}
             type="button"
+            aria-current={active === 'home' ? 'page' : undefined}
             onClick={() => navigate('/dashboard')}
           >
-            <span className="nav-ico">□</span>Наличности
+            <HomeIcon className="nav-ico" />Табло
+          </button>
+          <button
+            className={`nav-item nav-button ${active === 'inventory' ? 'active' : ''}`}
+            type="button"
+            aria-current={active === 'inventory' ? 'page' : undefined}
+            onClick={() => navigate('/inventory')}
+          >
+            <InventoryIcon className="nav-ico" />Наличности
           </button>
           <button
             className={`nav-item nav-button ${active === 'missing' ? 'active' : ''}`}
             type="button"
+            aria-current={active === 'missing' ? 'page' : undefined}
             onClick={() => navigate('/missing-products')}
           >
-            <span className="nav-ico">+</span>Липсващи продукти
+            <MissingIcon className="nav-ico" />Липсващи продукти
+          </button>
+          <button
+            className={`nav-item nav-button ${active === 'prices' ? 'active' : ''}`}
+            type="button"
+            aria-current={active === 'prices' ? 'page' : undefined}
+            onClick={() => navigate('/prices')}
+          >
+            <PricesIcon className="nav-ico" />Цени
           </button>
         </nav>
         <div className="sidebar-foot">

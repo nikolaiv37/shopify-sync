@@ -2,6 +2,10 @@ import type {
   MissingProductsScanResult,
   MissingProductsExportSummary,
   MissingSupplier,
+  PriceApplyBatchResult,
+  PriceApplyItemResult,
+  PricePreview,
+  PriceSupplierInfo,
   RecentRun,
   SessionResponse,
   StatusResponse,
@@ -129,4 +133,57 @@ export async function exportMissingProducts(supplier: SupplierKey, categoryId: s
     filename: filenameMatch?.[1] || 'missing-products.csv',
     summary: parseExportSummary(res.headers.get('X-Mebelcenter-Export-Summary')),
   };
+}
+
+// ---------- Prices ----------
+
+export async function getPriceSuppliers() {
+  const res = await fetch('/api/prices/suppliers', { credentials: 'same-origin' });
+  return parseResponse<{ suppliers: PriceSupplierInfo[] }>(res);
+}
+
+export type SellingOpInput = { operation: 'source' | 'multiplier'; multiplier?: number | null };
+export type CompareOpInput = { operation: 'keep' | 'clear' | 'source' | 'multiplier'; multiplier?: number | null };
+
+export async function previewPrices(supplier: SupplierKey, selling: SellingOpInput, compare: CompareOpInput) {
+  const res = await fetch('/api/prices/preview', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ supplier, selling, compare }),
+  });
+  return parseResponse<PricePreview>(res);
+}
+
+export type ApplyBatchItem = { variantId: string; sku: string; oldSellingPrice: number | null; oldCompareAtPrice: number | null };
+
+export async function applyPriceBatch(supplier: SupplierKey, selling: SellingOpInput, compare: CompareOpInput, items: ApplyBatchItem[]) {
+  const res = await fetch('/api/prices/apply-batch', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ supplier, selling, compare, items }),
+  });
+  return parseResponse<PriceApplyBatchResult>(res);
+}
+
+export type RollbackBatchItem = {
+  variantId: string;
+  sku: string;
+  oldSellingPrice: number | null;
+  newSellingPrice: number | null;
+  oldCompareAtPrice: number | null;
+  newCompareAtPrice: number | null;
+  sellingChanged: boolean;
+  compareChanged: boolean;
+};
+
+export async function rollbackPriceBatch(supplier: SupplierKey, items: RollbackBatchItem[]) {
+  const res = await fetch('/api/prices/rollback-batch', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ supplier, items }),
+  });
+  return parseResponse<{ results: PriceApplyItemResult[] }>(res);
 }

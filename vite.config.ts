@@ -20,6 +20,12 @@ export default defineConfig({
             res.end();
             return;
           }
+          if (req.url === '/dashboard' || req.url === '/inventory') {
+            res.statusCode = 302;
+            res.setHeader('Location', `/app${req.url}`);
+            res.end();
+            return;
+          }
           next();
         });
       },

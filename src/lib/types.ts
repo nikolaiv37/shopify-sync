@@ -71,6 +71,7 @@ export type MissingSupplier = {
   name: string;
   vendor: string;
   available: boolean;
+  priceMultiplier: number | null;
 };
 
 export type MissingProductRow = {
@@ -117,6 +118,103 @@ export type MissingProductsExportSummary = {
   rows: number;
   durationMs: number;
   excludedProducts?: Array<{ id: string; sku: string; title: string; reasons: string[] }>;
+};
+
+export type SellingOperationType = 'source' | 'multiplier';
+export type CompareOperationType = 'keep' | 'clear' | 'source' | 'multiplier';
+
+export type PriceOperation = {
+  type: SellingOperationType | CompareOperationType;
+  multiplier: number | null;
+  effectiveMultiplier: number | null;
+  markupPercent: number | null;
+};
+
+export type PriceSupplierInfo = {
+  key: SupplierKey;
+  name: string;
+  vendor: string;
+  skuField: string | null;
+  sourceField: string | null;
+  defaultMultiplier: number;
+  defaultMarkupPercent: number;
+  applyEnabled: boolean;
+  batchSize: number;
+};
+
+export type PriceRowStatus = 'change' | 'already' | 'unmatched' | 'invalid_price' | 'conflict';
+
+export type PriceRow = {
+  sku: string;
+  title: string;
+  wholesale: number | null;
+  currentPrice: number | null;
+  target: number | null;
+  diff: number | null;
+  currentCompareAt: number | null;
+  targetCompareAt: number | null | undefined;
+  compareMode: 'keep' | 'set' | 'clear';
+  sellingChanged: boolean;
+  compareChanged: boolean;
+  compareWarn: boolean;
+  status: PriceRowStatus;
+  reason: string | null;
+  variantId: string | null;
+  productId: string | null;
+  vendor: string | null;
+  selectable: boolean;
+};
+
+export type PricePreviewSummary = {
+  supplier: SupplierKey;
+  vendor: string;
+  selling: PriceOperation | null;
+  compare: PriceOperation | null;
+  feedProducts: number;
+  feedRows: number;
+  feedEmptySku: number;
+  feedDuplicateSku: number;
+  matched: number;
+  toChange: number;
+  alreadyCorrect: number;
+  unmatched: number;
+  invalidPrice: number;
+  conflict: number;
+  changeSellingOnly: number;
+  changeCompareOnly: number;
+  changeBoth: number;
+  compareWarnings: number;
+};
+
+export type PricePreview = {
+  supplier: PriceSupplierInfo;
+  selling: PriceOperation;
+  compare: PriceOperation;
+  generatedAt: string;
+  feedSnapshotAt: string;
+  warnings: string[];
+  rows: PriceRow[];
+  summary: PricePreviewSummary;
+};
+
+export type PriceApplyItemResult = {
+  sku: string;
+  variantId: string;
+  status: 'success' | 'skipped_stale' | 'conflict' | 'failed' | 'already';
+  sellingChanged?: boolean;
+  compareChanged?: boolean;
+  oldSellingPrice?: number | null;
+  newSellingPrice?: number | null;
+  oldCompareAtPrice?: number | null;
+  newCompareAtPrice?: number | null;
+  wholesale?: number | null;
+  reason?: string;
+  error?: string;
+};
+
+export type PriceApplyBatchResult = {
+  results: PriceApplyItemResult[];
+  feedSnapshotAt?: string;
 };
 
 export type MissingProductsScanResult = {

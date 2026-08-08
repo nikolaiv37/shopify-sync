@@ -140,7 +140,7 @@ test('transformProduct flags missing price / image / unmapped category', () => {
   assert.ok(warnings.includes('category-unmapped'));
 });
 
-test('megapap transform keeps English copy and uses ×1.70', () => {
+test('megapap transform keeps English copy and uses the canonical ×2.5', () => {
   const map = { 'Indoor furniture > Wardrobes': { type: 'Гардероби', tags: ['Гардероби'] } };
   const product = {
     supplier: 'megapap', sku: 'W-100', title: 'Wardrobe 3 doors', description: 'Solid wood wardrobe',
@@ -149,7 +149,7 @@ test('megapap transform keeps English copy and uses ×1.70', () => {
   };
   const { rows } = transformProduct(product, { config: megapap.config, categoryMap: map });
   assert.equal(rows[0].Vendor, 'Mebelcenter');
-  assert.equal(rows[0]['Variant Price'], '340.00'); // 200 × 1.70
+  assert.equal(rows[0]['Variant Price'], '500.00'); // 200 × 2.5 (canonical MegaPap rule)
   assert.equal(rows[0].Title, 'Wardrobe 3 doors'); // English preserved
   assert.equal(rows[0].Type, 'Гардероби');
 });

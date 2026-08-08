@@ -92,6 +92,11 @@ export function MissingProductsPage() {
     [categories, categoryId],
   );
 
+  const selectedSupplier = useMemo(
+    () => suppliers.find((item) => item.key === supplier) || null,
+    [suppliers, supplier],
+  );
+
   const supplierOptions = useMemo(
     () => suppliers.map((item) => ({ value: item.key, label: item.name })),
     [suppliers],
@@ -306,6 +311,15 @@ export function MissingProductsPage() {
             />
           </div>
         </div>
+
+        {selectedSupplier && selectedSupplier.priceMultiplier ? (
+          <p className="pricing-note">
+            <span className="pricing-note-ico" aria-hidden="true">€</span>
+            „Shopify цена“ се изчислява по правило:{' '}
+            <strong>доставна цена × {nf.format(selectedSupplier.priceMultiplier)}</strong>
+            <span className="pricing-note-markup"> (надценка {Math.round((selectedSupplier.priceMultiplier - 1) * 100)}%)</span>
+          </p>
+        ) : null}
 
         {loadingCategories ? <Progress text="Зареждат се категориите от XML фийда…" /> : null}
         {selectedCategory ? (
