@@ -1,0 +1,37 @@
+:root {
+  color-scheme: light;
+  --brand: #c4301c;
+  --brand-strong: #a5271a;
+  --brand-deep: #7b1e13;
+  --brand-soft: #f6ddd8;
+  --brand-softer: #fbeee9;
+  --brand-tint: #fdf7f5;
+  --ink: #1f1b1a;
+  --ink-2: #3a3330;
+  --text: #2b2724;
+  --muted: #78706c;
+  --faint: #a29a96;
+  --bg: #f7f5f2;
+  --surface: #ffffff;
+  --surface-2: #faf7f4;
+  --surface-3: #f1ece7;
+  --border: #e8e2dc;
+  --line: #efeae4;
+  --ok-bg: #ecf5ee;
+  --ok-text: #2a6e45;
+  --ok-border: #d1e7d8;
+  --warn-bg: #fbf1de;
+  --warn-text: #7c5100;
+  --warn-border: #efdaa9;
+  --err-bg: #fbeae7;
+  --err-text: #a5271a;
+  --err-border: #f3cec7;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-xs: 8px;
+  --shadow-sm: 0 1px 2px rgba(31, 27, 26, 0.04), 0 1px 3px rgba(31, 27, 26, 0.05);
+  --shadow: 0 8px 24px rgba(31, 27, 26, 0.06);
+  --shadow-lg: 0 20px 44px rgba(31, 27, 26, 0.14);
+  --focus-ring: 0 0 0 3px rgba(196, 48, 28, 0.22);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}

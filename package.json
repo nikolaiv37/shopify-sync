@@ -8,9 +8,14 @@
     "node": "20.x"
   },
   "scripts": {
-    "dev": "node dashboardServer.js",
+    "dev": "node scripts/dev-dashboard.js",
+    "dev:frontend": "vite --host 127.0.0.1",
+    "dev:api": "node dashboardServer.js",
     "start": "node dashboardServer.js",
-    "build": "node --check dashboardServer.js && node --check api/index.js && node --check lib/dashboardApp.js && node --check lib/inventorySync.js && node --check sync.js && node --check scripts/b2bcenter/verify-db.js && node --check lib/b2bcenterSync.js && node --check scripts/b2bcenter/sync.js",
+    "build": "vite build && npm run check:backend && npm run typecheck",
+    "check:backend": "node --check dashboardServer.js && node --check api/index.js && node --check lib/dashboardApp.js && node --check lib/inventorySync.js && node --check lib/missing-products/dashboard.js && node --check sync.js && node --check scripts/b2bcenter/verify-db.js && node --check lib/b2bcenterSync.js && node --check scripts/b2bcenter/sync.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test",
     "vercel-build": "npm run build",
     "sync": "node sync.js all",
     "sync:megapap": "node sync.js megapap",
@@ -77,11 +82,17 @@
     "cheerio": "^1.2.0",
     "dotenv": "^16.4.5",
     "fast-xml-parser": "^4.5.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "ws": "^8.20.1"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
     "tsx": "^4.22.3",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vite": "^8.2.0"
   }
 }
