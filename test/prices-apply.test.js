@@ -70,6 +70,30 @@ test('evaluateRow compare MULTIPLIER ×3.2 → 320 from wholesale', () => {
   assert.equal(v.compareChanged, true);
 });
 
+test('evaluateRow selling KEEP + compare MULTIPLIER changes compare only', () => {
+  const v = evalRow({ node: node({ currentPrice: '250', currentCompareAt: '270' }), sellingEffective: null, compareOperation: 'multiplier', compareMultiplier: 3.2 });
+  assert.equal(v.status, 'candidate');
+  assert.equal(v.targetSelling, null);
+  assert.equal(v.sellingChanged, false);
+  assert.equal(v.liveSelling, 250);
+  assert.equal(v.targetCompare, 320);
+  assert.equal(v.compareChanged, true);
+});
+
+test('evaluateRow selling KEEP + compare KEEP is already', () => {
+  const v = evalRow({ node: node({ currentPrice: '250', currentCompareAt: '270' }), sellingEffective: null, compareOperation: 'keep' });
+  assert.equal(v.status, 'already');
+  assert.equal(v.targetSelling, null);
+  assert.equal(v.sellingChanged, false);
+  assert.equal(v.compareChanged, false);
+});
+
+test('evaluateRow selling KEEP validates compare against live selling', () => {
+  const v = evalRow({ node: node({ currentPrice: '250', currentCompareAt: '270' }), sellingEffective: null, compareOperation: 'multiplier', compareMultiplier: 2.0 });
+  assert.equal(v.targetCompare, 200);
+  assert.equal(v.compareWarn, true);
+});
+
 test('evaluateRow BOTH change: selling 250 + compare 320', () => {
   const v = evalRow({ node: node({ currentPrice: '170', currentCompareAt: null }), compareOperation: 'multiplier', compareMultiplier: 3.2 });
   assert.equal(v.targetSelling, 250);
@@ -117,6 +141,18 @@ test('batchInputs sends only changed fields (selling only)', () => {
   });
   assert.deepEqual(jobs[0].variants[0], { id: 'v1', sku: 'M1', price: '250.00' });
   assert.ok(!('compareAtPrice' in jobs[0].variants[0]));
+});
+
+test('batchInputs sends only compareAtPrice for compare-only writes', () => {
+  const writes = [{ variantId: 'v1', productId: 'p1', sku: 'M1', sellingChanged: false, targetSelling: null, compareChanged: true, compareMode: 'set', targetCompare: 320 }];
+  const jobs = batchInputs(writes, 100, (w) => {
+    const input = { id: w.variantId, sku: w.sku };
+    if (w.sellingChanged) input.price = w.targetSelling.toFixed(2);
+    if (w.compareChanged) input.compareAtPrice = w.compareMode === 'clear' ? null : w.targetCompare.toFixed(2);
+    return input;
+  });
+  assert.deepEqual(jobs[0].variants[0], { id: 'v1', sku: 'M1', compareAtPrice: '320.00' });
+  assert.ok(!('price' in jobs[0].variants[0]));
 });
 
 test('batchInputs clears compare with null', () => {

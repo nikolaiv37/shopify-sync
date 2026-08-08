@@ -69,6 +69,7 @@ test('parseMultiplier accepts dot/comma decimals, rejects zero/negative/NaN', ()
 });
 
 test('effectiveMultiplier: SOURCE = ×1.0, MULTIPLIER = chosen value', () => {
+  assert.equal(effectiveMultiplier(PriceOperation.KEEP, null), null);
   assert.equal(effectiveMultiplier(PriceOperation.SOURCE, null), 1);
   assert.equal(effectiveMultiplier(PriceOperation.MULTIPLIER, '2.3'), 2.3);
   assert.equal(effectiveMultiplier(PriceOperation.MULTIPLIER, 'bad'), null);
@@ -103,7 +104,7 @@ function run(feedProducts, shopifyRows, effective = 2.5, compareOperation = 'kee
     sellingEffective: effective,
     compareOperation,
     compareMultiplier,
-    sellingMeta: { operation: effective === 1 ? 'source' : 'multiplier', multiplier: effective === 1 ? null : effective },
+    sellingMeta: { operation: effective == null ? 'keep' : effective === 1 ? 'source' : 'multiplier', multiplier: effective == null || effective === 1 ? null : effective },
     vendor: 'Mebelcenter',
   });
 }
@@ -274,4 +275,43 @@ test('compare-only change (selling already correct) → CHANGE, changeCompareOnl
   assert.equal(rows[0].compareChanged, true);
   assert.equal(rows[0].status, PriceStatus.CHANGE);
   assert.equal(summary.changeCompareOnly, 1);
+});
+
+test('selling KEEP + compare MULTIPLIER changes compare only and leaves selling target empty', () => {
+  const { rows, summary } = run(P(), [{ sku: 'M1', price: '250', compareAt: '270' }], null, 'multiplier', 3.2);
+  const r = rows[0];
+  assert.equal(r.target, null);
+  assert.equal(r.diff, null);
+  assert.equal(r.sellingChanged, false);
+  assert.equal(r.targetCompareAt, 320);
+  assert.equal(r.compareChanged, true);
+  assert.equal(r.status, PriceStatus.CHANGE);
+  assert.equal(summary.changeCompareOnly, 1);
+});
+
+test('selling KEEP + compare KEEP is already/no-op', () => {
+  const { rows, summary } = run(P(), [{ sku: 'M1', price: '250', compareAt: '270' }], null, 'keep');
+  assert.equal(rows[0].target, null);
+  assert.equal(rows[0].sellingChanged, false);
+  assert.equal(rows[0].compareChanged, false);
+  assert.equal(rows[0].status, PriceStatus.ALREADY);
+  assert.equal(summary.toChange, 0);
+});
+
+test('selling KEEP + compare CLEAR changes only when compare exists', () => {
+  const existing = run(P(), [{ sku: 'M1', price: '250', compareAt: '270' }], null, 'clear');
+  assert.equal(existing.rows[0].status, PriceStatus.CHANGE);
+  assert.equal(existing.rows[0].compareChanged, true);
+  assert.equal(existing.summary.changeCompareOnly, 1);
+
+  const empty = run(P(), [{ sku: 'M1', price: '250', compareAt: null }], null, 'clear');
+  assert.equal(empty.rows[0].status, PriceStatus.ALREADY);
+  assert.equal(empty.rows[0].compareChanged, false);
+});
+
+test('selling KEEP validates compare-at against current Shopify selling price', () => {
+  const { rows, summary } = run(P(), [{ sku: 'M1', price: '250', compareAt: '270' }], null, 'multiplier', 2.0);
+  assert.equal(rows[0].targetCompareAt, 200);
+  assert.equal(rows[0].compareWarn, true);
+  assert.equal(summary.compareWarnings, 1);
 });

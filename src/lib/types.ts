@@ -120,7 +120,7 @@ export type MissingProductsExportSummary = {
   excludedProducts?: Array<{ id: string; sku: string; title: string; reasons: string[] }>;
 };
 
-export type SellingOperationType = 'source' | 'multiplier';
+export type SellingOperationType = 'keep' | 'source' | 'multiplier';
 export type CompareOperationType = 'keep' | 'clear' | 'source' | 'multiplier';
 
 export type PriceOperation = {

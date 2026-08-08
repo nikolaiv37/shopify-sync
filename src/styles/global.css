@@ -278,6 +278,10 @@ td.empty-cell span { display: block; color: var(--muted); font-size: 13px; }
 .op-markup { display: block; margin-top: 6px; color: var(--muted); font-size: 12.5px; font-weight: 600; }
 .op-markup.is-invalid { color: var(--err-text); }
 .op-explain { margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.op-helper {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin: 12px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.4;
+}
 @media (max-width: 720px) { .op-grid, .op-columns, .op-fields { grid-template-columns: 1fr; } }
 .price-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .missing-table .col-note { color: var(--muted); white-space: normal; max-width: 320px; }

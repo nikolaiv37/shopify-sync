@@ -20,7 +20,7 @@ const fmt = (n: unknown) => nf.format(Number(n) || 0);
 const eur = new Intl.NumberFormat('bg-BG', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const money = (n: number | null | undefined) => (n == null ? '—' : eur.format(n));
 
-type SellingType = 'source' | 'multiplier';
+type SellingType = 'keep' | 'source' | 'multiplier';
 type CompareType = 'keep' | 'clear' | 'source' | 'multiplier';
 type PreviewFilter = 'all' | 'change' | 'already' | 'problem' | 'unmatched';
 type ResultFilter = 'all' | 'success' | 'skipped' | 'errors';
@@ -67,6 +67,7 @@ function parseMultInput(raw: string): number | null {
 }
 
 function sellLabel(type: SellingType, m: number | null): string {
+  if (type === 'keep') return 'Не се променя';
   return type === 'source' ? 'Върни към доставна цена' : `Коефициент × ${m != null ? nf.format(m) : '—'}`;
 }
 function cmpLabel(type: CompareType, m: number | null): string {
@@ -135,13 +136,15 @@ export function PricesPage() {
 
   const sellParsed = useMemo(() => parseMultInput(sellMult), [sellMult]);
   const cmpParsed = useMemo(() => parseMultInput(cmpMult), [cmpMult]);
-  const sellValid = sellType === 'source' || sellParsed != null;
+  const sellValid = sellType === 'keep' || sellType === 'source' || sellParsed != null;
   const cmpValid = cmpType !== 'multiplier' || cmpParsed != null;
-  const opsValid = sellValid && cmpValid;
+  const hasActiveOperation = sellType !== 'keep' || cmpType !== 'keep';
+  const opsValid = sellValid && cmpValid && hasActiveOperation;
   const sellMarkup = sellType === 'source' ? 0 : sellParsed != null ? Math.round((sellParsed - 1) * 100) : null;
   const cmpMarkup = cmpType === 'source' ? 0 : cmpType === 'multiplier' && cmpParsed != null ? Math.round((cmpParsed - 1) * 100) : null;
 
-  const sellingOp: SellingOpInput = sellType === 'source' ? { operation: 'source' } : { operation: 'multiplier', multiplier: sellParsed };
+  const sellingOp: SellingOpInput =
+    sellType === 'keep' ? { operation: 'keep' } : sellType === 'source' ? { operation: 'source' } : { operation: 'multiplier', multiplier: sellParsed };
   const compareOp: CompareOpInput =
     cmpType === 'multiplier' ? { operation: 'multiplier', multiplier: cmpParsed } : { operation: cmpType };
 
@@ -177,7 +180,9 @@ export function PricesPage() {
 
   // The operations actually previewed (used for apply, never the live inputs).
   const previewSellingOp: SellingOpInput | null = preview
-    ? preview.selling.type === 'source'
+    ? preview.selling.type === 'keep'
+      ? { operation: 'keep' }
+      : preview.selling.type === 'source'
       ? { operation: 'source' }
       : { operation: 'multiplier', multiplier: preview.selling.multiplier }
     : null;
@@ -385,6 +390,10 @@ export function PricesPage() {
     if (r.compareMode === 'clear') return 'Изчисти';
     return money(r.targetCompareAt ?? null);
   }
+  function newSellingCell(r: PriceRow) {
+    if (preview?.selling.type === 'keep') return 'Без промяна';
+    return money(r.target);
+  }
 
   return (
     <DashboardLayout active="prices" eyebrow="Операции" title="Цени" subtitle="Преглед и безопасна актуализация на продажната и сравнителната Shopify цена спрямо актуалната доставна цена." wide>
@@ -426,8 +435,9 @@ export function PricesPage() {
                 <Select<SellingType>
                   value={sellType}
                   options={[
-                    { value: 'multiplier', label: 'Приложи коефициент' },
+                    { value: 'keep', label: 'Не променяй' },
                     { value: 'source', label: 'Върни към доставна цена' },
+                    { value: 'multiplier', label: 'Приложи коефициент' },
                   ]}
                   ariaLabel="Операция за продажна цена"
                   onChange={setSellType}
@@ -441,8 +451,8 @@ export function PricesPage() {
                 </div>
               ) : (
                 <div className="field">
-                  <span>Формула</span>
-                  <p className="op-explain">Продажната цена ще бъде изравнена с доставната цена.</p>
+                  <span>Ефект</span>
+                  <p className="op-explain">{sellType === 'keep' ? 'Продажната цена няма да бъде променяна.' : 'Продажната цена ще бъде изравнена с доставната цена.'}</p>
                 </div>
               )}
             </div>
@@ -480,6 +490,10 @@ export function PricesPage() {
                 </div>
               )}
             </div>
+            <p className="op-helper">
+              <span className="pricing-note-ico" aria-hidden="true">i</span>
+              За да се показва като зачеркната цена в Shopify, сравнителната цена трябва да бъде по-висока от продажната цена.
+            </p>
           </div>
         </div>
 
@@ -499,7 +513,7 @@ export function PricesPage() {
           <Button variant="primary" disabled={loadingSupplier || previewing || !opsValid} onClick={onPreview}>
             {previewing ? 'Преглед…' : 'Преглед на промените'}
           </Button>
-          <p>Прегледът е само за четене. Не се записват промени в Shopify.</p>
+          <p>{hasActiveOperation ? 'Прегледът е само за четене. Не се записват промени в Shopify.' : 'Изберете операция за поне една от цените.'}</p>
         </div>
       </section>
 
@@ -596,7 +610,7 @@ export function PricesPage() {
                     {resultRows.slice(0, 500).map((r) => (
                       <tr key={r.variantId}>
                         <td className="cell-supplier col-code">{r.sku}</td>
-                        <td className="num">{money(r.oldSellingPrice)} → {money(r.newSellingPrice)}</td>
+                        <td className="num">{r.sellingChanged ? `${money(r.oldSellingPrice)} → ${money(r.newSellingPrice)}` : '—'}</td>
                         <td className="num">{r.compareChanged ? `${money(r.oldCompareAtPrice)} → ${money(r.newCompareAtPrice)}` : '—'}</td>
                         <td className="col-status">
                           <span className={`status-pill ${r.status === 'success' || r.status === 'already' ? 'ready' : r.status === 'failed' || r.status === 'conflict' ? 'blocked' : 'notes'}`}>
@@ -682,7 +696,7 @@ export function PricesPage() {
                       <td className="missing-title col-title" title={r.title || undefined}>{r.title || '—'}</td>
                       <td className="num col-price">{money(r.wholesale)}</td>
                       <td className="num col-price">{money(r.currentPrice)}</td>
-                      <td className={`num col-price${r.sellingChanged ? (r.diff != null && r.diff > 0 ? ' diff-up' : r.diff != null && r.diff < 0 ? ' diff-down' : '') : ' is-unchanged'}`}>{money(r.target)}</td>
+                      <td className={`num col-price${r.sellingChanged ? (r.diff != null && r.diff > 0 ? ' diff-up' : r.diff != null && r.diff < 0 ? ' diff-down' : '') : ' is-unchanged'}`}>{newSellingCell(r)}</td>
                       <td className="num col-price">{money(r.currentCompareAt)}</td>
                       <td className={`num col-price${r.compareChanged ? '' : ' is-unchanged'}`}>
                         {newCompareCell(r)}

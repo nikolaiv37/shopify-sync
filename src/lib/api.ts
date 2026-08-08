@@ -142,7 +142,7 @@ export async function getPriceSuppliers() {
   return parseResponse<{ suppliers: PriceSupplierInfo[] }>(res);
 }
 
-export type SellingOpInput = { operation: 'source' | 'multiplier'; multiplier?: number | null };
+export type SellingOpInput = { operation: 'keep' | 'source' | 'multiplier'; multiplier?: number | null };
 export type CompareOpInput = { operation: 'keep' | 'clear' | 'source' | 'multiplier'; multiplier?: number | null };
 
 export async function previewPrices(supplier: SupplierKey, selling: SellingOpInput, compare: CompareOpInput) {
