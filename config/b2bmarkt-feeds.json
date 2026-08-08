@@ -6,5 +6,9 @@
   "symetron": {
     "env": "B2BMARKT_SYMETRON_URL",
     "localFile": "b2bmarkt_symetron.xml"
+  },
+  "symetron_en": {
+    "env": "B2BMARKT_SYMETRON_EN_URL",
+    "localFile": "symetron_en.xml"
   }
 }

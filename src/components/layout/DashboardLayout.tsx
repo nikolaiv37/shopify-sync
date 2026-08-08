@@ -29,7 +29,6 @@ export function DashboardLayout({ active, eyebrow, title, subtitle, wide = false
           <BrandLogo />
         </div>
         <nav className="nav" aria-label="Навигация">
-          <p className="nav-label">Работа</p>
           <button
             className={`nav-item nav-button ${active === 'inventory' ? 'active' : ''}`}
             type="button"
@@ -44,12 +43,6 @@ export function DashboardLayout({ active, eyebrow, title, subtitle, wide = false
           >
             <span className="nav-ico">+</span>Липсващи продукти
           </button>
-          <p className="nav-label nav-label-soft">Предстоящи</p>
-          <span className="nav-item disabled">Цени</span>
-          <span className="nav-item disabled">Преводи</span>
-          <span className="nav-item disabled">Почистване</span>
-          <span className="nav-item disabled">Логове</span>
-          <span className="nav-item disabled">Настройки</span>
         </nav>
         <div className="sidebar-foot">
           <span className="dot-live" aria-hidden="true" />
@@ -64,7 +57,12 @@ export function DashboardLayout({ active, eyebrow, title, subtitle, wide = false
             <h1>{title}</h1>
             <p className="subtitle">{subtitle}</p>
           </div>
-          <button className="btn btn-ghost" type="button" onClick={onLogout}>
+          <button className="btn btn-ghost logout-btn" type="button" onClick={onLogout}>
+            <svg className="logout-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
             Изход
           </button>
         </header>

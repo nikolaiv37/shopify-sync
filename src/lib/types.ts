@@ -1,4 +1,4 @@
-export type SupplierKey = 'megapap' | 'b2bmarkt';
+export type SupplierKey = 'megapap' | 'b2bmarkt' | 'symetron';
 export type SyncTarget = 'shopify' | 'b2bcenter';
 
 export type SessionResponse = {

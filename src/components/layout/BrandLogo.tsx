@@ -1,8 +1,5 @@
+import logoUrl from '../../assets/mebelcenter-logo.svg';
+
 export function BrandLogo() {
-  return (
-    <div className="brand-wordmark" aria-label="Mebelcenter">
-      <span className="brand-mark">M</span>
-      <span>MEBELCENTER</span>
-    </div>
-  );
+  return <img className="brand-logo" src={logoUrl} alt="Mebelcenter" width={158} height={48} />;
 }

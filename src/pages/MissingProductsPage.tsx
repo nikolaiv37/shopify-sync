@@ -263,7 +263,7 @@ export function MissingProductsPage() {
       eyebrow="Каталог"
       title="Липсващи продукти"
       subtitle="Проверете кои продукти от доставчиците липсват в Shopify. Този екран е само за преглед и не прави промени."
-      wide={Boolean(result)}
+      wide
     >
       <section className="panel missing-workflow">
         <div className="panel-heading">
@@ -554,7 +554,7 @@ export function MissingProductsPage() {
           </div>
         </section>
       ) : (
-        <section className="panel">
+        <section className="panel idle-panel">
           <div className="idle-hint">
             <div className="idle-ico" aria-hidden="true">
               i
