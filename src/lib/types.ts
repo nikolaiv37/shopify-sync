@@ -57,6 +57,13 @@ export type SupplierCategory = {
   name: string;
   productCount: number;
   level: string;
+  displayName: string;
+  originalName: string;
+  originalPath: string;
+  parentPath: string;
+  parentPathOriginal: string;
+  hasTranslation: boolean;
+  hasParent: boolean;
 };
 
 export type MissingSupplier = {

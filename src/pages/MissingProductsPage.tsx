@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { Button } from '../components/ui/Buttons';
+import { Select } from '../components/ui/Select';
+import { Combobox, type ComboboxOption } from '../components/ui/Combobox';
 import { Progress } from '../components/feedback/Progress';
 import { exportMissingProducts, getMissingCategories, getMissingSuppliers, scanMissingProducts } from '../lib/api';
 import type { MissingProductRow, MissingProductsExportSummary, MissingProductsScanResult, MissingSupplier, SupplierCategory, SupplierKey } from '../lib/types';
@@ -151,9 +153,9 @@ export function MissingProductsPage() {
   const [supplier, setSupplier] = useState<SupplierKey | ''>('');
   const [categories, setCategories] = useState<SupplierCategory[]>([]);
   const [categoryId, setCategoryId] = useState('');
-  const [categorySearch, setCategorySearch] = useState('');
   const [loadingSuppliers, setLoadingSuppliers] = useState(true);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const [categoriesError, setCategoriesError] = useState('');
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<MissingProductsScanResult | null>(null);
@@ -191,22 +193,55 @@ export function MissingProductsPage() {
     setExportSuccess(null);
     setExportError('');
     setError('');
+    setCategoriesError('');
     getMissingCategories(supplier)
       .then((data) => setCategories(data.categories))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Категориите не можаха да се заредят.'))
+      .catch((err) => setCategoriesError(err instanceof Error ? err.message : 'Категориите не можаха да се заредят.'))
       .finally(() => setLoadingCategories(false));
   }, [supplier]);
-
-  const filteredCategories = useMemo(() => {
-    const q = categorySearch.trim().toLocaleLowerCase();
-    if (!q) return categories;
-    return categories.filter((category) => category.name.toLocaleLowerCase().includes(q));
-  }, [categories, categorySearch]);
 
   const selectedCategory = useMemo(
     () => categories.find((category) => category.id === categoryId) || null,
     [categories, categoryId],
   );
+
+  const supplierOptions = useMemo(
+    () => suppliers.map((item) => ({ value: item.key, label: item.name })),
+    [suppliers],
+  );
+
+  const categoryOptions = useMemo<ComboboxOption[]>(
+    () =>
+      categories.map((category) => {
+        const secondaryParts: string[] = [];
+        if (category.hasParent) secondaryParts.push(category.parentPath);
+        if (category.hasTranslation) secondaryParts.push(category.originalName);
+        return {
+          value: category.id,
+          primary: category.displayName,
+          secondary: secondaryParts.join(' · ') || undefined,
+          meta: `${fmt(category.productCount)} продукта`,
+          searchText: [
+            category.displayName,
+            category.originalName,
+            category.originalPath,
+            category.parentPath,
+            category.parentPathOriginal,
+          ]
+            .filter(Boolean)
+            .join(' '),
+        };
+      }),
+    [categories],
+  );
+
+  const categoryState: 'idle' | 'loading' | 'error' | 'empty' = loadingCategories
+    ? 'loading'
+    : categoriesError
+      ? 'error'
+      : !categories.length && supplier
+        ? 'empty'
+        : 'idle';
 
   useEffect(() => {
     setResult(null);
@@ -332,56 +367,55 @@ export function MissingProductsPage() {
       <section className="panel missing-workflow">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">Phase C</p>
+            <p className="eyebrow">Проверка</p>
             <h2>Проверка по категория</h2>
           </div>
           <span className="mode-pill preview">CSV без Shopify промени</span>
         </div>
 
         <div className="form-grid">
-          <label className="field">
+          <div className="field">
             <span>Доставчик</span>
-            <select value={supplier} disabled={loadingSuppliers || scanning} onChange={(event) => setSupplier(event.target.value as SupplierKey)}>
-              {loadingSuppliers ? <option>Зареждане…</option> : null}
-              {suppliers.map((item) => (
-                <option value={item.key} key={item.key}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field">
-            <span>Търсене в категории</span>
-            <input
-              value={categorySearch}
-              disabled={loadingCategories || scanning || !categories.length}
-              onChange={(event) => setCategorySearch(event.target.value)}
-              placeholder="Например: столове, Παιδικό..."
+            <Select<SupplierKey>
+              value={supplier}
+              options={supplierOptions}
+              loading={loadingSuppliers}
+              disabled={scanning || !supplierOptions.length}
+              placeholder={loadingSuppliers ? 'Зареждане…' : 'Изберете доставчик'}
+              ariaLabel="Доставчик"
+              onChange={setSupplier}
             />
-          </label>
+          </div>
 
-          <label className="field field-wide">
+          <div className="field">
             <span>Категория</span>
-            <select value={categoryId} disabled={loadingCategories || scanning || !categories.length} onChange={(event) => setCategoryId(event.target.value)}>
-              <option value="">{loadingCategories ? 'Категориите се зареждат…' : 'Изберете категория'}</option>
-              {filteredCategories.map((category) => (
-                <option value={category.id} key={category.id}>
-                  {category.name} · {fmt(category.productCount)} продукта
-                </option>
-              ))}
-            </select>
-          </label>
+            <Combobox
+              value={categoryId}
+              options={categoryOptions}
+              disabled={scanning || !supplier}
+              state={categoryState}
+              placeholder="Изберете категория"
+              searchPlaceholder="Търсене по име (BG или оригинал)…"
+              loadingMessage="Категориите се зареждат…"
+              emptyMessage="Няма налични категории за този доставчик."
+              errorMessage={categoriesError || 'Категориите не можаха да се заредят.'}
+              noResultsMessage="Няма съвпадения."
+              ariaLabel="Категория"
+              onChange={setCategoryId}
+            />
+          </div>
         </div>
 
         {loadingCategories ? <Progress text="Зареждат се категориите от XML фийда…" /> : null}
-        {selectedCategory && selectedCategory.productCount >= 500 ? (
-          <div className="notice warning">
-            Категорията съдържа {fmt(selectedCategory.productCount)} продукта. Проверката може да отнеме около 20–30 секунди.
+        {selectedCategory ? (
+          <div className="info-callout">
+            <strong>{fmt(selectedCategory.productCount)} продукта</strong> ще бъдат проверени в тази категория.
+            {selectedCategory.productCount >= 500 ? ' Проверката може да отнеме около 20–30 секунди.' : ''}
           </div>
         ) : null}
         {scanning ? <Progress text="Проверката се изпълнява. Shopify се чете без промени…" /> : null}
         {error ? <div className="notice error">{error}</div> : null}
+        {categoriesError && !loadingCategories ? <div className="notice error">{categoriesError}</div> : null}
         {!loadingSuppliers && !suppliers.length ? <div className="notice warning">Няма доставчик с достъпен фийд в текущата среда.</div> : null}
 
         <div className="action-row">
