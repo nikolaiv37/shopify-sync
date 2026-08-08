@@ -8,6 +8,7 @@ type Props = {
   eyebrow: string;
   title: string;
   subtitle: string;
+  wide?: boolean;
   children: ReactNode;
 };
 
@@ -15,7 +16,7 @@ function navigate(href: string) {
   window.dispatchEvent(new CustomEvent('app:navigate', { detail: { href } }));
 }
 
-export function DashboardLayout({ active, eyebrow, title, subtitle, children }: Props) {
+export function DashboardLayout({ active, eyebrow, title, subtitle, wide = false, children }: Props) {
   async function onLogout() {
     await logout().catch(() => undefined);
     window.location.href = appPath('/');
@@ -56,7 +57,7 @@ export function DashboardLayout({ active, eyebrow, title, subtitle, children }: 
         </div>
       </aside>
 
-      <main className="main">
+      <main className={`main${wide ? ' main-wide' : ''}`}>
         <header className="topbar">
           <div className="topbar-text">
             <p className="eyebrow">{eyebrow}</p>

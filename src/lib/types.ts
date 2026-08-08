@@ -78,6 +78,7 @@ export type MissingProductRow = {
   supplierSku: string;
   title: string;
   category: string;
+  categoryDisplay: string;
   supplierPrice: string;
   shopifyPrice: string;
   stock: string;
@@ -124,6 +125,12 @@ export type MissingProductsScanResult = {
   category: {
     id: string;
     name: string;
+    displayName: string;
+    originalName: string;
+    originalPath: string;
+    parentPath: string;
+    hasTranslation: boolean;
+    hasParent: boolean;
   };
   totals: {
     supplierProducts: number;

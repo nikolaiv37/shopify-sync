@@ -4,137 +4,24 @@ import { Button } from '../components/ui/Buttons';
 import { Select } from '../components/ui/Select';
 import { Combobox, type ComboboxOption } from '../components/ui/Combobox';
 import { Progress } from '../components/feedback/Progress';
+import { ProductDrawer } from '../components/missing/ProductDrawer';
+import { exportStatus, statusLabel, type ExportStatus } from '../lib/missingStatus';
 import { exportMissingProducts, getMissingCategories, getMissingSuppliers, scanMissingProducts } from '../lib/api';
 import type { MissingProductRow, MissingProductsExportSummary, MissingProductsScanResult, MissingSupplier, SupplierCategory, SupplierKey } from '../lib/types';
 
 const nf = new Intl.NumberFormat('bg-BG');
 const fmt = (n: unknown) => nf.format(Number(n) || 0);
-const money = new Intl.NumberFormat('bg-BG', { style: 'currency', currency: 'BGN', minimumFractionDigits: 2, maximumFractionDigits: 2 });
-type ReviewFilter = 'all' | 'valid' | 'warning' | 'blocked' | 'selected' | 'zeroStock';
-
-function validationLabel(row: MissingProductRow) {
-  if (row.validationState === 'blocked') return 'Не може да се експортира';
-  if (row.validationState === 'warning') return 'С предупреждение';
-  return 'Валиден';
-}
+const eur = new Intl.NumberFormat('bg-BG', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+type ReviewFilter = 'all' | 'ready' | 'notes' | 'blocked' | 'selected' | 'zeroStock';
 
 function formatPrice(value: string) {
   const num = Number.parseFloat(String(value || '').replace(',', '.'));
-  return Number.isFinite(num) ? money.format(num) : '—';
+  return Number.isFinite(num) ? eur.format(num) : '—';
 }
 
 function isZeroStock(row: MissingProductRow) {
   const value = Number.parseFloat(String(row.stock || '').replace(',', '.'));
   return Number.isFinite(value) && value <= 0;
-}
-
-const reasonLabels: Record<string, string> = {
-  'missing-sku': 'Липсва SKU.',
-  'missing-title': 'Липсва име.',
-  'missing-price': 'Липсва цена.',
-  'category-unmapped': 'Категорията няма пълно мапване.',
-  'no-image': 'Няма снимка.',
-  'already-in-shopify': 'Вече съществува в Shopify.',
-  'duplicate-supplier-sku': 'Дублиран доставчик код.',
-  'duplicate-selected-sku': 'Дублиран избран SKU.',
-};
-
-function reasonText(reason: string) {
-  return reasonLabels[reason] || reason;
-}
-
-function htmlToPreview(value: string) {
-  if (!value) return '';
-  if (typeof window === 'undefined') return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  const normalized = value
-    .replace(/<\s*br\s*\/?>/gi, '\n')
-    .replace(/<\/\s*p\s*>/gi, '\n')
-    .replace(/<\/\s*li\s*>/gi, '\n');
-  const doc = new DOMParser().parseFromString(normalized, 'text/html');
-  doc.querySelectorAll('script,style,iframe,object,embed').forEach((node) => node.remove());
-  return (doc.body.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function copyText(value: string) {
-  if (!navigator.clipboard) return;
-  void navigator.clipboard.writeText(value);
-}
-
-function ProductDetails({ row }: { row: MissingProductRow }) {
-  const preview = htmlToPreview(row.description);
-  const extraImages = Math.max(0, row.imageUrls.length - 1);
-  const reasons = [...row.validationErrors, ...row.validationWarnings];
-
-  return (
-    <div className="missing-details">
-      <div className="detail-media-row">
-        {row.imageUrls[0] ? (
-          <a href={row.imageUrls[0]} target="_blank" rel="noreferrer" className="product-thumb-link">
-            <img className="product-thumb" src={row.imageUrls[0]} alt={row.title || row.supplierSku} loading="lazy" />
-          </a>
-        ) : (
-          <div className="product-thumb product-thumb-empty">Няма снимка</div>
-        )}
-        <div>
-          <h4>Описание</h4>
-          <p className="description-preview">{preview || 'Няма описание.'}</p>
-        </div>
-      </div>
-      <details>
-        <summary>
-          {row.imageUrls.length ? `${row.imageUrls.length} снимки${extraImages ? ` · +${extraImages} снимки` : ''}` : 'Няма снимки'}
-        </summary>
-        {row.imageUrls.length ? (
-          <>
-            <Button variant="ghost" size="sm" onClick={() => copyText(row.imageUrls.join('\n'))}>
-              Копирай URL адресите
-            </Button>
-            <ul>
-              {row.imageUrls.slice(0, 8).map((url) => (
-                <li key={url}>
-                  <a href={url} target="_blank" rel="noreferrer">
-                    {url}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : (
-          <p>Няма снимки.</p>
-        )}
-      </details>
-      <div className="detail-grid">
-        <div>
-          <h4>Доставна цена</h4>
-          <p>{formatPrice(row.supplierPrice)}</p>
-        </div>
-        <div>
-          <h4>Тегло</h4>
-          <p>{row.weightKg ? `${row.weightKg} kg` : '—'}</p>
-        </div>
-        <div>
-          <h4>Баркод</h4>
-          <p>{row.barcode || '—'}</p>
-        </div>
-        <div>
-          <h4>Тип / тагове</h4>
-          <p>{[row.typePreview, ...row.tagsPreview].filter(Boolean).join(', ') || '—'}</p>
-        </div>
-      </div>
-      <div>
-        <h4>Валидация</h4>
-        {reasons.length ? (
-          <ul>
-            {reasons.map((reason) => (
-              <li key={reason}>{reasonText(reason)}</li>
-            ))}
-          </ul>
-        ) : (
-          <p>Няма блокиращи проблеми.</p>
-        )}
-      </div>
-    </div>
-  );
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -159,7 +46,7 @@ export function MissingProductsPage() {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<MissingProductsScanResult | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(() => new Set());
   const [filter, setFilter] = useState<ReviewFilter>('all');
   const [exporting, setExporting] = useState(false);
@@ -246,7 +133,7 @@ export function MissingProductsPage() {
   useEffect(() => {
     setResult(null);
     setSelectedRows(new Set());
-    setExpanded(null);
+    setDetailsId(null);
     setFilter('all');
     setProductSearch('');
     setPage(1);
@@ -259,7 +146,7 @@ export function MissingProductsPage() {
     setScanning(true);
     setError('');
     setResult(null);
-    setExpanded(null);
+    setDetailsId(null);
     setSelectedRows(new Set());
     setFilter('all');
     setProductSearch('');
@@ -289,13 +176,21 @@ export function MissingProductsPage() {
 
   const counts = useMemo(() => {
     const rows = result?.missingProducts || [];
+    let ready = 0;
+    let notes = 0;
+    let blocked = 0;
+    for (const row of rows) {
+      const status = exportStatus(row);
+      if (status === 'ready') ready += 1;
+      else if (status === 'notes') notes += 1;
+      else blocked += 1;
+    }
     return {
       total: rows.length,
-      valid: rows.filter((row) => row.validationState === 'valid').length,
-      warning: rows.filter((row) => row.validationState === 'warning').length,
-      blocked: rows.filter((row) => row.validationState === 'blocked').length,
+      ready,
+      notes,
+      blocked,
       importable: rows.filter((row) => row.importable).length,
-      missingImages: rows.filter((row) => row.importable && !row.hasImages).length,
       zeroStock: rows.filter((row) => row.importable && isZeroStock(row)).length,
     };
   }, [result]);
@@ -308,9 +203,9 @@ export function MissingProductsPage() {
   const visibleRows = useMemo(() => {
     let rows = result?.missingProducts || [];
     if (filter === 'selected') rows = rows.filter((row) => selectedRows.has(row.id));
-    else if (filter === 'valid') rows = rows.filter((row) => row.validationState === 'valid');
-    else if (filter === 'warning') rows = rows.filter((row) => row.validationState === 'warning');
-    else if (filter === 'blocked') rows = rows.filter((row) => row.validationState === 'blocked');
+    else if (filter === 'ready') rows = rows.filter((row) => exportStatus(row) === 'ready');
+    else if (filter === 'notes') rows = rows.filter((row) => exportStatus(row) === 'notes');
+    else if (filter === 'blocked') rows = rows.filter((row) => exportStatus(row) === 'blocked');
     else if (filter === 'zeroStock') rows = rows.filter(isZeroStock);
 
     const q = productSearch.trim().toLocaleLowerCase();
@@ -328,15 +223,13 @@ export function MissingProductsPage() {
 
   useEffect(() => {
     setPage(1);
-    setExpanded(null);
   }, [filter, productSearch, pageSize]);
 
   function updatePage(nextPage: number) {
-    setExpanded(null);
     setPage(Math.max(1, Math.min(totalPages, nextPage)));
   }
 
-  function selectAllValid() {
+  function selectAllExportable() {
     if (!result) return;
     setSelectedRows(new Set(result.missingProducts.filter((row) => row.importable).map((row) => row.id)));
   }
@@ -357,12 +250,20 @@ export function MissingProductsPage() {
     }
   }
 
+  const detailsRow = useMemo(
+    () => result?.missingProducts.find((row) => row.id === detailsId) || null,
+    [result, detailsId],
+  );
+
+  const selectedCount = selectedRows.size;
+
   return (
     <DashboardLayout
       active="missing"
       eyebrow="Каталог"
       title="Липсващи продукти"
       subtitle="Проверете кои продукти от доставчиците липсват в Shopify. Този екран е само за преглед и не прави промени."
+      wide={Boolean(result)}
     >
       <section className="panel missing-workflow">
         <div className="panel-heading">
@@ -431,14 +332,16 @@ export function MissingProductsPage() {
           <div className="panel-heading">
             <div>
               <p className="eyebrow">Резултат</p>
-              <h2>{result.supplierName} · {result.category.name}</h2>
+              <h2>
+                {result.supplierName} · {result.category.displayName || result.category.name}
+              </h2>
+              {result.category.hasTranslation ? (
+                <p className="result-sub">{result.category.originalName}</p>
+              ) : null}
             </div>
-            <span className="status success">Проверката приключи</span>
+            <span className="status success">Проверката приключи успешно</span>
           </div>
-          <p className="result-summary">
-            Проверката приключи. От {fmt(result.totals.supplierProducts)} продукта в категорията, {fmt(result.totals.alreadyInShopify)} вече съществуват в Shopify,
-            а {fmt(result.totals.missing)} липсват. Не са направени Shopify промени.
-          </p>
+          <p className="result-summary">Проверката приключи успешно. Не са направени промени в Shopify.</p>
           <div className="stat-row missing-stats">
             <div className="stat">
               <span className="stat-label">В категорията</span>
@@ -466,106 +369,135 @@ export function MissingProductsPage() {
       ) : null}
 
       {result ? (
-        <section className="panel">
-          <div className="panel-heading">
+        <section className="workspace">
+          <div className="workspace-head">
             <div>
               <p className="eyebrow">Преглед</p>
-              <h2>Липсващи продукти</h2>
+              <h2>Липсващи продукти <span className="workspace-count">{fmt(counts.total)} намерени</span></h2>
             </div>
-            <span className="table-count">Избрани: {fmt(selectedRows.size)} · Валидни: {fmt(counts.importable)}</span>
+          </div>
+
+          <div className="review-toolbar">
+            <div className="filter-row" aria-label="Филтри по статус">
+              {([
+                ['all', `Всички (${fmt(counts.total)})`],
+                ['ready', `Готови (${fmt(counts.ready)})`],
+                ['notes', `Със забележки (${fmt(counts.notes)})`],
+                ['blocked', `Блокирани (${fmt(counts.blocked)})`],
+              ] as const).map(([key, label]) => (
+                <button
+                  className={`filter-pill ${filter === key ? 'active' : ''}`}
+                  type="button"
+                  key={key}
+                  onClick={() => setFilter(key)}
+                >
+                  {label}
+                </button>
+              ))}
+              {counts.zeroStock ? (
+                <>
+                  <span className="filter-divider" aria-hidden="true" />
+                  <button
+                    className={`filter-pill is-subtle ${filter === 'zeroStock' ? 'active' : ''}`}
+                    type="button"
+                    onClick={() => setFilter(filter === 'zeroStock' ? 'all' : 'zeroStock')}
+                    title="Продукти с наличност 0"
+                  >
+                    Без наличност ({fmt(counts.zeroStock)})
+                  </button>
+                </>
+              ) : null}
+            </div>
+
+            <div className="review-toolbar-right">
+              <div className="review-search">
+                <input
+                  type="search"
+                  aria-label="Търсене по код или име"
+                  value={productSearch}
+                  onChange={(event) => setProductSearch(event.target.value)}
+                  placeholder="Търсене по код или име на продукт"
+                />
+              </div>
+              <div className="review-page-size">
+                <Select<string>
+                  value={String(pageSize)}
+                  options={[
+                    { value: '25', label: '25 реда' },
+                    { value: '50', label: '50 реда' },
+                    { value: '100', label: '100 реда' },
+                  ]}
+                  ariaLabel="Редове на страница"
+                  onChange={(value) => setPageSize(Number(value))}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="selection-bar">
-            <div className="selection-stats">
-              <span>Валидни: {fmt(counts.valid)}</span>
-              <span>С предупреждения: {fmt(counts.warning)}</span>
-              <span>Блокирани: {fmt(counts.blocked)}</span>
-              <span>Без снимки: {fmt(counts.missingImages)}</span>
-              <span>Без наличност: {fmt(counts.zeroStock)}</span>
+            <div className="selection-info">
+              <strong>
+                {selectedCount ? `${fmt(selectedCount)} продукта маркирани за експорт` : 'Няма маркирани продукти за експорт'}
+              </strong>
+              {selectedCount && filter !== 'selected' ? (
+                <button className="link-btn" type="button" onClick={() => setFilter('selected')}>
+                  Покажи маркираните
+                </button>
+              ) : null}
+              {filter === 'selected' ? (
+                <button className="link-btn" type="button" onClick={() => setFilter('all')}>
+                  Покажи всички
+                </button>
+              ) : null}
+              {selectedZeroStock ? (
+                <span className="selection-note">включително {fmt(selectedZeroStock)} без наличност (Shopify чернови)</span>
+              ) : null}
             </div>
             <div className="selection-actions">
-              <Button variant="secondary" size="sm" disabled={!counts.importable} onClick={selectAllValid}>
-                Избери всички валидни
+              <Button variant="ghost" size="sm" disabled={!counts.importable} onClick={selectAllExportable}>
+                Маркирай всички за експорт
               </Button>
-              <Button variant="ghost" size="sm" disabled={!selectedRows.size} onClick={() => setSelectedRows(new Set())}>
-                Изчисти избора
+              <Button variant="ghost" size="sm" disabled={!selectedCount} onClick={() => setSelectedRows(new Set())}>
+                Изчисти
+              </Button>
+              <Button variant="primary" size="sm" disabled={!selectedCount || exporting} onClick={onExport}>
+                {exporting ? 'Генериране…' : selectedCount ? `Генерирай CSV за ${fmt(selectedCount)} продукта` : 'Генерирай CSV'}
               </Button>
             </div>
           </div>
 
-          <div className="filter-row" aria-label="Филтри">
-            {[
-              ['all', `Всички (${fmt(counts.total)})`],
-              ['valid', `Валидни (${fmt(counts.valid)})`],
-              ['warning', `С предупреждения (${fmt(counts.warning)})`],
-              ['blocked', `Блокирани (${fmt(counts.blocked)})`],
-              ['zeroStock', `Без наличност (${fmt(counts.zeroStock)})`],
-              ['selected', `Избрани (${fmt(selectedRows.size)})`],
-            ].map(([key, label]) => (
-              <button className={`filter-pill ${filter === key ? 'active' : ''}`} type="button" key={key} onClick={() => setFilter(key as ReviewFilter)}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <div className="export-panel">
-            <div>
-              <p className="export-title">Експорт към Shopify CSV</p>
-              <p className="export-copy">
-                Избрани: {fmt(selectedRows.size)}. Блокираните продукти не могат да бъдат избрани. Продуктите с предупреждения се включват, ако са importable.
-                {selectedZeroStock ? ` Избрани без наличност: ${fmt(selectedZeroStock)} — ще бъдат включени като Shopify чернови.` : ''}
-              </p>
-            </div>
-            <Button variant="primary" disabled={!result || !selectedRows.size || exporting} onClick={onExport}>
-              {exporting ? 'Генериране…' : 'Генерирай и изтегли CSV'}
-            </Button>
-          </div>
           {exportSuccess ? (
             <div className="notice success">
               CSV файлът е генериран: {exportSuccess.filename}. Експортирани продукти: {fmt(exportSuccess.summary?.exported || 0)}, изключени: {fmt(exportSuccess.summary?.excluded || 0)}.
-              Не са направени Shopify промени.
             </div>
           ) : null}
           {exportError ? <div className="notice error">{exportError}</div> : null}
-
-          <div className="table-toolbar">
-            <label className="field compact-field">
-              <span>Търсене по код или име</span>
-              <input
-                value={productSearch}
-                onChange={(event) => setProductSearch(event.target.value)}
-                placeholder="SKU или име на продукт"
-              />
-            </label>
-            <label className="field page-size-field">
-              <span>Редове</span>
-              <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-              </select>
-            </label>
-          </div>
 
           <div className="table-wrap missing-table-wrap">
             <table className="missing-table">
               <thead>
                 <tr>
-                  <th />
-                  <th>Код</th>
-                  <th>Име</th>
-                  <th>Категория</th>
-                  <th className="num">Shopify цена</th>
-                  <th>Наличност</th>
-                  <th>Валидация</th>
-                  <th />
+                  <th className="col-check" />
+                  <th className="col-code">Код</th>
+                  <th className="col-title">Продукт</th>
+                  <th className="col-cat">Категория</th>
+                  <th className="num col-price">Доставна цена</th>
+                  <th className="num col-price">Shopify цена</th>
+                  <th className="col-stock">Наличност</th>
+                  <th className="col-status">Статус</th>
+                  <th className="col-details" />
                 </tr>
               </thead>
               <tbody>
                 {pageRows.length ? (
-                  pageRows.map((row) => (
-                    <Fragment key={row.id}>
-                      <tr className={row.importable ? '' : 'is-blocked'}>
-                        <td>
+                  pageRows.map((row) => {
+                    const status: ExportStatus = exportStatus(row);
+                    const zeroStock = isZeroStock(row);
+                    const stockText = row.stock || row.availability || '—';
+                    const isActive = detailsId === row.id;
+                    return (
+                      <tr key={row.id} className={[status === 'blocked' ? 'is-blocked' : '', isActive ? 'is-active' : ''].filter(Boolean).join(' ')}>
+                        <td className="col-check">
                           <input
                             type="checkbox"
                             aria-label={`Маркирай ${row.supplierSku}`}
@@ -574,32 +506,30 @@ export function MissingProductsPage() {
                             onChange={() => toggleSelected(row.id)}
                           />
                         </td>
-                        <td className="cell-supplier">{row.supplierSku}</td>
-                        <td className="missing-title">{row.title || '—'}</td>
-                        <td>{row.category || '—'}</td>
-                        <td className="num">{formatPrice(row.shopifyPrice)}</td>
-                        <td>{row.stock || row.availability || '—'}</td>
-                        <td>
-                          <span className={`validation-pill ${row.validationState}`}>{validationLabel(row)}</span>
+                        <td className="cell-supplier col-code">{row.supplierSku}</td>
+                        <td className="missing-title col-title" title={row.title || undefined}>{row.title || '—'}</td>
+                        <td className="col-cat" title={row.category || undefined}>{row.categoryDisplay || row.category || '—'}</td>
+                        <td className="num col-price">{formatPrice(row.supplierPrice)}</td>
+                        <td className="num col-price">{formatPrice(row.shopifyPrice)}</td>
+                        <td className={`col-stock${zeroStock ? ' is-zero' : ''}`}>{stockText}</td>
+                        <td className="col-status">
+                          <span className={`status-pill ${status}`}>{statusLabel[status]}</span>
                         </td>
-                        <td>
-                          <Button variant="ghost" size="sm" onClick={() => setExpanded(expanded === row.id ? null : row.id)}>
-                            Детайли
-                          </Button>
+                        <td className="col-details">
+                          <button
+                            type="button"
+                            className={`details-link${isActive ? ' is-active' : ''}`}
+                            onClick={() => setDetailsId(isActive ? null : row.id)}
+                          >
+                            Детайли <span aria-hidden="true">→</span>
+                          </button>
                         </td>
                       </tr>
-                      {expanded === row.id ? (
-                        <tr key={`${row.id}-details`}>
-                          <td colSpan={8}>
-                            <ProductDetails row={row} />
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  ))
+                    );
+                  })
                 ) : (
                   <tr>
-                    <td className="empty-cell" colSpan={8}>
+                    <td className="empty-cell" colSpan={9}>
                       <strong>{result.missingProducts.length ? 'Няма редове за този филтър' : 'Няма липсващи продукти'}</strong>
                       <span>{result.missingProducts.length ? 'Сменете филтъра, за да видите останалите продукти.' : 'Всички продукти от избраната категория вече са открити в Shopify.'}</span>
                     </td>
@@ -636,6 +566,8 @@ export function MissingProductsPage() {
           </div>
         </section>
       )}
+
+      <ProductDrawer row={detailsRow} onClose={() => setDetailsId(null)} />
     </DashboardLayout>
   );
 }
