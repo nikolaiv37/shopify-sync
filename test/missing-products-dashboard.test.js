@@ -5,6 +5,7 @@ import {
   assertSupportedSupplier,
   buildExportFilename,
   exportMissingProductsCsv,
+  MAX_EXPORT_IDENTIFIERS,
   makeCategoryId,
   normalizeCategories,
   resolveCategorySelection,
@@ -109,6 +110,10 @@ test('dashboard export validates request input', async () => {
   await assert.rejects(() => exportMissingProductsCsv({ supplierKey: 'unknown', categoryId: 'x', productIds: ['x'] }), /Unsupported supplier/);
   await assert.rejects(() => exportMissingProductsCsv({ supplierKey: 'megapap', categoryId: '', productIds: ['x'] }), /categoryId is required/);
   await assert.rejects(() => exportMissingProductsCsv({ supplierKey: 'megapap', categoryId: makeCategoryId(megapapCategory), productIds: [] }), /Select at least one/);
+});
+
+test('dashboard export default identifier cap supports large category selections', () => {
+  assert.equal(MAX_EXPORT_IDENTIFIERS >= 1000, true);
 });
 
 test('dashboard export includes warning-only products and excludes blocked products', async () => {
