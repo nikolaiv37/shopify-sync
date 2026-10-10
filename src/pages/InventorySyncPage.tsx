@@ -1,425 +1,165 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { Button } from '../components/ui/Buttons';
 import { Progress } from '../components/feedback/Progress';
-import { StatusBadge } from '../components/feedback/StatusBadge';
-import { getRuns, getStatus, runSync } from '../lib/api';
-import type { RecentRun, SupplierKey, SyncSummary, SyncTarget } from '../lib/types';
+import { previewInventory, applyInventoryBatch, getInventoryHistory, discoverInventoryIdentities, runSync, getRuns } from '../lib/api';
+import type { InventoryPreview, InventoryHistory, IdentityDiscovery, InventoryBatchResult, SupplierKey, SyncSummary, RecentRun } from '../lib/types';
 
-const SUPPLIERS = [
-  { key: 'megapap' as const, name: 'Megapap', vendor: 'Mebelcenter' },
-  { key: 'b2bmarkt' as const, name: 'B2BMarkt', vendor: 'Europe' },
-];
-
+const suppliers = [{ key: 'megapap' as const, name: 'MegaPap' }, { key: 'b2bmarkt' as const, name: 'B2BMarkt' }, { key: 'symetron' as const, name: 'Symetron' }];
+const names = Object.fromEntries(suppliers.map(s => [s.key, s.name]));
 const nf = new Intl.NumberFormat('bg-BG');
-const fmt = (n: unknown) => nf.format(Number(n) || 0);
-const prod = (n: unknown) => (Number(n) === 1 ? 'продукт' : 'продукта');
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return '—';
-  return new Date(value).toLocaleString('bg-BG', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+const date = (s?: string) => s ? new Date(s).toLocaleString('bg-BG', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+const labels: Record<string, string> = { change: 'Ще се промени', already: 'Без промяна', unmatched: 'Няма съвпадение', conflict: 'Конфликт', invalid_quantity: 'Невалидна наличност', skipped: 'Пропуснат', verified: 'Потвърден', insufficient: 'Недостатъчни данни', success: 'Обновен', stale: 'Променена наличност', failed: 'Грешка' };
+const reasons: Record<string, string> = {
+  'missing-persisted-mapping': 'Идентичността трябва да се запише след преглед на съпоставянето.',
+  'missing-shopify-variant': 'Артикулът не е намерен в Shopify.',
+  'owned-by-other-supplier': 'Наличността се управлява от друг доставчик.',
+  'ownership-source-missing-review': 'Собственикът липсва в своя каталог. Нужен е преглед.',
+  'duplicate-supplier-identifier': 'Повтарящ се идентификатор в каталога.',
+  'duplicate-shopify-destination': 'Идентичността сочи към няколко варианта.',
+  'invalid-quantity': 'Наличността е отрицателна или невалидна.',
+  'missing-quantity': 'Доставчикът не е посочил наличност.',
+  'unsupported-quantity': 'Неподдържана стойност на наличност.',
+  'unresolved-ownership': 'Няма потвърден собственик за тази локация.',
+  'inventory-not-tracked': 'Вариантът няма активно проследяване на наличност.',
+  'location-inventory-unavailable': 'Няма проверена наличност за избраната локация.',
+  'ambiguous-evidence': 'Данните сочат към различни продукти.',
+  'insufficient-evidence': 'Няма достатъчно независими данни за съпоставяне.',
+  'cross-supplier-or-destination-conflict': 'Непотвърдено припокриване на доставчици.',
+  'quantity-changed-after-preview': 'Наличността е променена след прегледа. Обновете прегледа.',
+  'persisted-identity': 'Записана идентичност', 'corroborated-evidence': 'Потвърдено по независими данни',
+};
+function download(name: string, body: string, type: string) {
+  const url = URL.createObjectURL(new Blob([body], { type })); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); URL.revokeObjectURL(url);
 }
-
-function joinBg(parts: string[]) {
-  if (parts.length <= 1) return parts[0] || '';
-  return `${parts.slice(0, -1).join(', ')} и ${parts[parts.length - 1]}`;
-}
-
-function buildSentence(s: SyncSummary) {
-  if (s.dryRun) {
-    if (Number(s.planned) === 0 && Number(s.errors) === 0) {
-      return 'Прегледът приключи. Няма промени за прилагане — количествата са актуални.';
-    }
-    const parts = [`${fmt(s.planned)} ${prod(s.planned)} за обновяване`, `${fmt(s.skipped)} пропуснати`];
-    if (s.errors > 0) parts.push(`${fmt(s.errors)} изискват внимание`);
-    return `Прегледът е готов. Готови са ${joinBg(parts)}. Все още не са направени промени.`;
-  }
-  if (Number(s.updated) === 0 && Number(s.errors) === 0) {
-    return 'Синхронизацията приключи. Няма нови промени — количествата са актуални.';
-  }
-  const parts = [`${fmt(s.updated)} ${prod(s.updated)} обновени`, `${fmt(s.skipped)} пропуснати`];
-  if (s.errors > 0) parts.push(`${fmt(s.errors)} с грешки`);
-  return `Синхронизацията приключи. ${joinBg(parts)}.${s.errors > 0 ? ' Прегледайте техническите детайли по-долу.' : ''}`;
-}
-
-function RunCard({
-  target,
-  supplier,
-  running,
-  lastText,
-  onRun,
-}: {
-  target: SyncTarget;
-  supplier: (typeof SUPPLIERS)[number];
-  running: boolean;
-  lastText: string;
-  onRun: (supplierKey: SupplierKey, dryRun: boolean, target: SyncTarget) => void;
-}) {
-  const isPortal = target === 'b2bcenter';
-  return (
-    <article className={`supplier-card ${isPortal ? 'is-portal' : ''} ${running ? 'is-running' : ''}`}>
-      <header className="card-head">
-        <div className="card-title">
-          <h3>{supplier.name}</h3>
-          <p className="card-caption">
-            {isPortal ? `Портал B2BCenter · ${supplier.vendor}` : `Магазин · Марка ${supplier.vendor}`}
-          </p>
-        </div>
-        <span className={`health-dot ${running ? 'running' : 'ok'}`}>
-          <span className="dot" aria-hidden="true" />
-          {running ? 'Изпълнява се…' : 'В готовност'}
-        </span>
-      </header>
-      <p className="card-desc">
-        {isPortal
-          ? `Обновява количествата на артикулите на ${supplier.name} в портала B2BCenter.`
-          : `Обновява складовите количества в онлайн магазина по данни от ${supplier.name}.`}
-      </p>
-      <div className="last-result">{lastText}</div>
-      <div className="card-actions">
-        <Button variant="secondary" disabled={running} onClick={() => onRun(supplier.key, true, target)}>
-          Преглед
-        </Button>
-        <Button variant="primary" disabled={running} onClick={() => onRun(supplier.key, false, target)}>
-          Синхронизирай
-        </Button>
-      </div>
-      <p className="card-foot">
-        {isPortal ? 'Съпоставяне по артикул · Само количествата' : 'Ръчно стартиране · Обновяват се само количествата'}
-      </p>
-    </article>
-  );
-}
-
-function ConfirmModal({
-  pending,
-  onCancel,
-  onConfirm,
-}: {
-  pending: { target: SyncTarget; supplierKey: SupplierKey } | null;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  if (!pending) return null;
-  const supplier = SUPPLIERS.find((s) => s.key === pending.supplierKey)?.name || pending.supplierKey;
-  const portal = pending.target === 'b2bcenter';
-  return (
-    <div className="modal-overlay">
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-        <div className="modal-icon" aria-hidden="true">
-          !
-        </div>
-        <h3 id="confirm-title">{portal ? 'Синхронизация към портала?' : 'Да приложа ли синхронизацията?'}</h3>
-        <p className="modal-body">
-          {portal
-            ? `Ще бъдат обновени количествата в портала B2BCenter за ${supplier}.`
-            : `Ще бъдат обновени складовите количества в онлайн магазина (Shopify) за ${supplier}.`}
-        </p>
-        <ul className="modal-points">
-          <li className="will">Обновява наличните количества на продуктите</li>
-          <li className="wont">Не променя цени, имена, категории, снимки или видимост</li>
-        </ul>
-        <p className="modal-hint">Уверете се, че първо сте направили „Преглед“ и числата са очаквани.</p>
-        <div className="modal-actions">
-          <Button variant="ghost" onClick={onCancel}>
-            Отказ
-          </Button>
-          <Button variant="primary" onClick={onConfirm}>
-            Да, приложи
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
+function csv(rows: Array<Record<string, unknown>>) {
+  const fields = ['supplier', 'supplierProductId', 'title', 'shopifyTitle', 'itemCode', 'currentSku', 'variantId', 'currentQuantity', 'quantity', 'delta', 'status', 'reason', 'suggestedResolution'];
+  const cell = (value: unknown) => { let s = String(value ?? ''); if (/^[=+@\-\t\r]/.test(s)) s = `'${s}`; return `"${s.replaceAll('"', '""')}"`; };
+  return '\uFEFF' + [fields.join(','), ...rows.map(row => fields.map(f => cell(row[f])).join(','))].join('\r\n');
 }
 
 export function InventorySyncPage() {
-  const [running, setRunning] = useState(false);
-  const [runningKey, setRunningKey] = useState<string | null>(null);
-  const [summary, setSummary] = useState<SyncSummary | null>(null);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [runs, setRuns] = useState<RecentRun[]>([]);
-  const [statusTone, setStatusTone] = useState<'idle' | 'running' | 'success' | 'warning' | 'error'>('idle');
-  const [statusText, setStatusText] = useState('В готовност');
-  const [pendingApply, setPendingApply] = useState<{ target: SyncTarget; supplierKey: SupplierKey } | null>(null);
-
-  async function loadRuns() {
-    const data = await getRuns();
-    setRuns(data.runs || []);
+  const [previews, setPreviews] = useState<Partial<Record<SupplierKey, InventoryPreview>>>({});
+  const [selected, setSelected] = useState<SupplierKey>('megapap');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState(''); const [error, setError] = useState('');
+  const [history, setHistory] = useState<InventoryHistory[]>([]); const [historyError, setHistoryError] = useState('');
+  const [portalHistory, setPortalHistory] = useState<RecentRun[]>([]); const [portalVolatile, setPortalVolatile] = useState(false);
+  const [portal, setPortal] = useState<Partial<Record<SupplierKey, SyncSummary>>>({});
+  const [discovery, setDiscovery] = useState<IdentityDiscovery | null>(null);
+  const [showDiscovery, setShowDiscovery] = useState(false);
+  const [search, setSearch] = useState(''); const [filter, setFilter] = useState('all'); const [page, setPage] = useState(0);
+  const [outcomes, setOutcomes] = useState<Record<string, string>>({});
+  const [pending, setPending] = useState<{ supplier: SupplierKey; portal: boolean } | null>(null);
+  const [large, setLarge] = useState(false); const [clock, setClock] = useState(Date.now());
+  const guard = useRef(false); const dialog = useRef<HTMLDivElement>(null); const previousFocus = useRef<HTMLElement | null>(null);
+  async function loadHistory() {
+    const results = await Promise.allSettled([getInventoryHistory(), getRuns()]);
+    if (results[0].status === 'fulfilled') { setHistory(results[0].value.runs); setHistoryError(''); } else setHistoryError('Историята от Shopify не е достъпна. Опитайте „Обнови“.');
+    if (results[1].status === 'fulfilled') { setPortalHistory(results[1].value.runs.filter(r => r.target === 'b2bcenter')); setPortalVolatile(results[1].value.volatile); }
   }
-
+  useEffect(() => { void loadHistory(); const timer = window.setInterval(() => setClock(Date.now()), 15000); return () => window.clearInterval(timer); }, []);
   useEffect(() => {
-    loadRuns().catch(() => setRuns([]));
-    const timer = window.setInterval(async () => {
-      try {
-        const data = await getStatus();
-        setRunning(data.running);
-        if (data.running && data.run) {
-          setRunningKey(`${data.run.target}-${data.run.supplierKey}`);
-          setLogs(data.run.logs || []);
-          setStatusTone('running');
-          setStatusText('Изпълнява се…');
-          if (data.run.summary) setSummary(data.run.summary);
-        } else {
-          setRunningKey(null);
-          if (statusTone === 'running') {
-            setStatusTone('idle');
-            setStatusText('В готовност');
-          }
+    if (!pending) return;
+    previousFocus.current = document.activeElement as HTMLElement;
+    const first = dialog.current?.querySelector<HTMLElement>('input, button'); first?.focus();
+    function keydown(e: KeyboardEvent) {
+      if (e.key === 'Escape') { e.preventDefault(); setPending(null); }
+      if (e.key === 'Tab') {
+        const list = Array.from(dialog.current?.querySelectorAll<HTMLElement>('input, button:not(:disabled)') || []);
+        const first = list[0], last = list.at(-1);
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
+    }
+    document.addEventListener('keydown', keydown);
+    return () => { document.removeEventListener('keydown', keydown); previousFocus.current?.focus(); };
+  }, [pending]);
+  const preview = previews[selected];
+  const rows = showDiscovery ? discovery?.rows || [] : preview?.rows || [];
+  const filtered = useMemo(() => rows.filter(row => {
+    const problem = !['change', 'already', 'verified'].includes(row.status);
+    return (filter === 'all' || (filter === 'problems' ? problem : row.status === filter)) && `${row.title} ${row.shopifyTitle || ''} ${row.itemCode} ${row.supplierProductId} ${row.currentSku || ''}`.toLowerCase().includes(search.toLowerCase());
+  }), [rows, filter, search]);
+  const expired = (p?: InventoryPreview) => !p || clock >= new Date(p.expiresAt).getTime();
+  async function task(key: string, action: () => Promise<void>) {
+    if (guard.current) return; guard.current = true; setBusy(key); setError(''); setMessage('');
+    try { await action(); } catch (e) { setError(e instanceof Error ? e.message : 'Операцията не бе изпълнена. Обновете прегледа.'); }
+    finally { if (key.startsWith('apply-')) await loadHistory(); guard.current = false; setBusy(null); setClock(Date.now()); }
+  }
+  async function inspect(supplier: SupplierKey) {
+    await task(`preview-${supplier}`, async () => { setSelected(supplier); setShowDiscovery(false); setPage(0); setOutcomes({}); const p = await previewInventory(supplier); setPreviews(prev => ({ ...prev, [supplier]: p })); setMessage(`${names[supplier]}: прегледът е готов. Няма направени промени.`); });
+  }
+  async function inspectMappings() {
+    await task('discovery', async () => { setDiscovery(await discoverInventoryIdentities()); setShowDiscovery(true); setFilter('all'); setPage(0); setMessage('Съпоставянето е прегледано без записи. Записването е отделна, потвърдена операция.'); });
+  }
+  async function inspectPortal(supplier: SupplierKey) {
+    await task(`portal-preview-${supplier}`, async () => {
+      const result = await runSync({ supplierKey: supplier, target: 'b2bcenter', dryRun: true });
+      if (result.summary) setPortal(prev => ({ ...prev, [supplier]: result.summary! }));
+      setMessage(`B2BCenter · ${names[supplier]}: ${result.summary?.planned || 0} промени, ${result.summary?.skipped || 0} пропуснати. Няма записи.`); await loadHistory();
+    });
+  }
+  async function apply() {
+    if (!pending) return; const request = pending; setPending(null);
+    await task(`apply-${request.supplier}`, async () => {
+      if (request.portal) {
+        const p = portal[request.supplier];
+        const result = await runSync({ supplierKey: request.supplier, target: 'b2bcenter', dryRun: false, confirm: true, allowLargeApply: large, previewToken: p?.previewToken || undefined });
+        setMessage(`B2BCenter: ${result.summary?.updated || 0} обновени, ${result.summary?.errors || 0} грешки${result.summary?.safety?.thresholdBlocked ? ' — блокирано от прага' : ''}.`);
+        setPortal(prev => ({ ...prev, [request.supplier]: undefined }));
+      } else {
+        const p = previews[request.supplier]; if (!p || expired(p) || !p.canApply) throw new Error('Направете нов валиден преглед.');
+        setSelected(request.supplier); setShowDiscovery(false);
+        const counts = { updated: 0, skipped: 0, errors: 0 };
+        for (const [index, token] of p.batches.entries()) {
+          setMessage(`Партида ${index + 1} от ${p.batches.length} · ${counts.updated} обновени`);
+          const result: InventoryBatchResult = await applyInventoryBatch(request.supplier, token, large);
+          for (const k of ['updated', 'skipped', 'errors'] as const) counts[k] += result.counts[k];
+          setOutcomes(prev => ({ ...prev, ...Object.fromEntries(result.results.filter(r => r.rowId).map(r => [r.rowId!, r.status])) }));
         }
-      } catch {
-        setStatusTone('error');
-        setStatusText('Грешка при връзката');
+        setMessage(`${names[request.supplier]}: ${counts.updated} обновени, ${counts.skipped} пропуснати, ${counts.errors} грешки. ${counts.errors || counts.skipped ? 'Направете нов преглед за оставащите промени.' : 'Синхронизацията приключи.'}`);
+        setPreviews(prev => ({ ...prev, [request.supplier]: { ...p, canApply: false, batches: [] } }));
       }
-    }, 2500);
-    return () => window.clearInterval(timer);
-  }, [statusTone]);
-
-  const lastByKey = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const run of runs) {
-      const key = `${run.target}-${run.supplierKey}`;
-      if (map.has(key)) continue;
-      const dry = run.mode !== 'apply';
-      const text = dry
-        ? `Последен преглед: ${fmt(run.planned)} за обновяване, ${fmt(run.skipped)} пропуснати.`
-        : `Последна синхронизация: ${fmt(run.updated)} обновени, ${fmt(run.skipped)} пропуснати.`;
-      map.set(key, text);
-    }
-    return map;
-  }, [runs]);
-
-  async function executeRun(supplierKey: SupplierKey, dryRun: boolean, target: SyncTarget) {
-    if (!dryRun) {
-      setPendingApply({ supplierKey, target });
-      return;
-    }
-    await performRun(supplierKey, dryRun, target);
+      await loadHistory();
+    });
   }
-
-  async function performRun(supplierKey: SupplierKey, dryRun: boolean, target: SyncTarget) {
-    const supplier = SUPPLIERS.find((s) => s.key === supplierKey)?.name || supplierKey;
-    setPendingApply(null);
-    setRunning(true);
-    setRunningKey(`${target}-${supplierKey}`);
-    setSummary(null);
-    setLogs([`Стартиране на ${supplier} — ${dryRun ? 'преглед…' : 'синхронизация…'}`]);
-    setStatusTone('running');
-    setStatusText('Изпълнява се…');
-    try {
-      const payload = {
-        target,
-        supplierKey,
-        dryRun,
-        confirm: target === 'b2bcenter' && !dryRun ? true : undefined,
-        allowLargeApply: target === 'b2bcenter' && !dryRun ? true : undefined,
-      };
-      const data = await runSync(payload);
-      if (data.summary) {
-        setSummary(data.summary);
-        setStatusTone(data.summary.errors > 0 ? 'warning' : 'success');
-        setStatusText(data.summary.dryRun ? 'Прегледът е готов' : 'Синхронизацията приключи');
-      }
-      setLogs(data.logs || []);
-      await loadRuns();
-    } catch (error) {
-      setStatusTone('error');
-      setStatusText('Неуспешно');
-      setSummary(null);
-      setLogs([error instanceof Error ? error.message : 'Заявката не бе изпълнена.']);
-    } finally {
-      setRunning(false);
-      setRunningKey(null);
-    }
-  }
-
-  return (
-    <DashboardLayout
-      active="inventory"
-      eyebrow="Оперативен панел"
-      title="Синхронизация на наличности"
-      subtitle="Обновявайте складовите количества от доставчиците. Първо направете преглед, след което приложете промените."
-    >
-      <ol className="rail" aria-label="Как работи">
-        {['Изберете доставчик', 'Направете преглед', 'Проверете резултата', 'Приложете промените'].map((step, idx) => (
-          <li className={`rail-step ${idx === 0 ? 'is-current' : ''}`} key={step}>
-            <span className="rail-dot">{idx + 1}</span>
-            <span className="rail-text">{step}</span>
-          </li>
-        ))}
-      </ol>
-
-      <section>
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Онлайн магазин</p>
-            <h2>Наличности в Shopify</h2>
-          </div>
-          <p className="section-note">Обновява складовите количества на продуктите в онлайн магазина по данни от доставчика.</p>
-        </div>
-        <div className="supplier-grid">
-          {SUPPLIERS.map((supplier) => (
-            <RunCard
-              key={supplier.key}
-              target="shopify"
-              supplier={supplier}
-              running={running && runningKey === `shopify-${supplier.key}`}
-              lastText={lastByKey.get(`shopify-${supplier.key}`) || 'Все още няма данни от изпълнение.'}
-              onRun={executeRun}
-            />
-          ))}
-        </div>
+  const pendingPreview = pending ? previews[pending.supplier] : undefined;
+  const needsLarge = pending?.portal ? (portal[pending.supplier]?.safety?.plannedChangePct || 0) > (portal[pending.supplier]?.safety?.maxChangePct || 40) : pendingPreview?.thresholdExceeded;
+  const pages = Math.max(1, Math.ceil(filtered.length / 50));
+  return <DashboardLayout active="inventory" eyebrow="Оперативен панел" title="Синхронизация на наличности" subtitle="Прегледайте промените и проблемите, след което потвърдете синхронизацията за избрания доставчик и локация.">
+    <div className="inventory-v2">
+      <div className="inv-workflow"><span>1 · Преглед</span><span>2 · Проверка на промените</span><span>3 · Потвърждение и синхронизация</span><Button size="sm" onClick={() => void inspectMappings()} disabled={!!busy}>Преглед на съпоставянето</Button></div>
+      {busy && <Progress text={busy === 'discovery' ? 'Проверяват се идентичностите в трите каталога и Shopify…' : busy.startsWith('apply') ? message || 'Проверка и прилагане на партидата…' : 'Четат се каталозите и наличностите. Без записи…'} />}
+      <div aria-live="polite">{message && <p className="inv-notice">{message}</p>}</div>
+      {error && <p className="inv-notice is-error" role="alert">{error} Завършените партиди остават записани; проверете историята преди повторение.</p>}
+      <section aria-labelledby="shopify-title"><div className="section-heading"><div><p className="eyebrow">Онлайн магазин</p><h2 id="shopify-title">Наличности в Shopify</h2></div><p className="section-note">Наличност за конкретната локация · Само потвърдени идентичности</p></div>
+        <div className="inv-grid">{suppliers.map(s => {
+          const p = previews[s.key]; const last = history.find(h => h.supplier === s.key && h.operation === 'inventory' && h.status === 'complete' && h.totals.errors === 0 && h.totals.updated > 0);
+          return <article key={s.key} className={`supplier-card inv-card ${selected === s.key && !showDiscovery ? 'is-selected' : ''}`}>
+            <div className="card-head"><div><h3>{s.name}</h3><p className="card-caption">Shopify{p ? ` · ${p.location.name}` : ''}</p></div><span className={`inv-state ${p?.mappingReady ? 'is-verified' : ''}`}>{p ? p.mappingReady ? 'Съпоставен' : 'Нужен преглед' : 'Непроверен'}</span></div>
+            <p className="inv-connection">{p ? 'Връзка потвърдена при прегледа' : 'Връзка и идентичности: непроверени'}</p>
+            <div className="inv-metrics"><div><strong>{p ? nf.format(p.summary.matched) : '—'}</strong><span>съпоставени</span></div><div><strong>{p ? nf.format(p.summary.changes) : '—'}</strong><span>промени</span></div><div><strong>{p ? nf.format(p.summary.unmatched + p.summary.conflicts + p.summary.invalidQuantities) : '—'}</strong><span>за преглед</span></div></div>
+            <dl className="inv-timestamps"><div><dt>Преглед</dt><dd>{date(p?.generatedAt)}{p && expired(p) ? ' · изтекъл' : ''}</dd></div><div><dt>Успешен синхрон</dt><dd>{date(last?.finishedAt)}</dd></div></dl>
+            {p?.mappingMissing ? <p className="inv-help">{p.mappingMissing} идентичности чакат потвърдено записване.</p> : null}
+            {p?.prerequisites.map(text => <p className="inv-help" key={text}>{text}</p>)}
+            <div className="card-actions"><Button variant="secondary" disabled={!!busy} onClick={() => void inspect(s.key)}>Преглед на промените</Button><Button variant="primary" disabled={!!busy || !p?.canApply || expired(p)} onClick={() => { setLarge(false); setPending({ supplier: s.key, portal: false }); }}>Синхронизирай</Button></div>
+            <div className="inv-card-links"><button disabled={!p || !!busy} onClick={() => { setSelected(s.key); setShowDiscovery(false); setFilter('problems'); setPage(0); }}>Виж проблемите</button><a href="#inventory-history">История</a></div>
+          </article>;
+        })}</div>
       </section>
-
-      <section>
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Портал за доставчици</p>
-            <h2>Синхронизация към B2BCenter</h2>
-          </div>
-          <p className="section-note">
-            Обновява <strong>само количествата</strong> на артикулите в портала B2BCenter. Не променя цени, имена, категории или снимки.
-          </p>
-        </div>
-        <div className="supplier-grid">
-          {SUPPLIERS.map((supplier) => (
-            <RunCard
-              key={supplier.key}
-              target="b2bcenter"
-              supplier={supplier}
-              running={running && runningKey === `b2bcenter-${supplier.key}`}
-              lastText={lastByKey.get(`b2bcenter-${supplier.key}`) || 'Все още няма данни от изпълнение.'}
-              onRun={executeRun}
-            />
-          ))}
-        </div>
-      </section>
-
-      <section className={`panel result-panel is-${statusTone}`}>
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">Резултат</p>
-            <h2>Текущ резултат</h2>
-          </div>
-          <StatusBadge tone={statusTone}>{statusText}</StatusBadge>
-        </div>
-        {running ? <Progress text="Изпълнението се обработва…" /> : null}
-        {!summary ? (
-          <div className="idle-hint">
-            <div className="idle-ico" aria-hidden="true">
-              i
-            </div>
-            <div>
-              <p className="idle-title">Все още няма изпълнение</p>
-              <p className="idle-body">
-                Изберете доставчик и стартирайте <strong>Преглед</strong> — промени няма да бъдат направени, просто ще видите какво предстои.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div>
-            <p className="result-summary">{buildSentence(summary)}</p>
-            <div className="stat-row">
-              <div className="stat">
-                <span className="stat-label">{summary.dryRun ? 'Готови за обновяване' : 'Обновени'}</span>
-                <strong className="stat-value">{fmt(summary.dryRun ? summary.planned : summary.updated)}</strong>
-              </div>
-              <div className="stat">
-                <span className="stat-label">Пропуснати</span>
-                <strong className="stat-value">{fmt(summary.skipped)}</strong>
-              </div>
-              <div className={`stat ${summary.errors > 0 ? (summary.dryRun ? 'is-attention' : 'is-error') : ''}`}>
-                <span className="stat-label">{summary.dryRun ? 'Изискват внимание' : 'Грешки'}</span>
-                <strong className="stat-value">{fmt(summary.errors)}</strong>
-              </div>
-            </div>
-            <dl className="result-meta">
-              <div>
-                <dt>Доставчик</dt>
-                <dd>{summary.supplier}</dd>
-              </div>
-              <div>
-                <dt>Режим</dt>
-                <dd>{summary.dryRun ? 'Преглед' : 'Приложено'}</dd>
-              </div>
-              <div>
-                <dt>Продължителност</dt>
-                <dd>{summary.elapsed ?? '—'} сек</dd>
-              </div>
-              <div>
-                <dt>Приключено</dt>
-                <dd>{formatDate(summary.finishedAt)}</dd>
-              </div>
-            </dl>
-            <details className="tech-details">
-              <summary>Технически детайли (лог)</summary>
-              <pre>{logs.length ? logs.join('\n') : 'Няма записан лог.'}</pre>
-            </details>
-          </div>
-        )}
-      </section>
-
-      <section className="panel recent-panel">
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">История</p>
-            <h2>Последни изпълнения</h2>
-          </div>
-          <Button variant="ghost" size="sm" onClick={() => loadRuns().catch(() => setRuns([]))}>
-            Обнови
-          </Button>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Дестинация · Доставчик</th>
-                <th>Режим</th>
-                <th className="num">Обновени</th>
-                <th className="num">Пропуснати</th>
-                <th className="num">Грешки</th>
-                <th>Приключено</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.length ? (
-                runs.map((run, idx) => (
-                  <tr key={`${run.target}-${run.supplierKey}-${run.finishedAt}-${idx}`}>
-                    <td className="cell-supplier">{run.supplier}</td>
-                    <td>
-                      <span className={`mode-pill ${run.mode === 'apply' ? 'apply' : 'preview'}`}>{run.mode === 'apply' ? 'Приложено' : 'Преглед'}</span>
-                    </td>
-                    <td className="num">{fmt(run.updated)}</td>
-                    <td className="num">{fmt(run.skipped)}</td>
-                    <td className="num">{fmt(run.errors)}</td>
-                    <td className="cell-date">{formatDate(run.finishedAt)}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td className="empty-cell" colSpan={6}>
-                    <strong>Няма записани изпълнения</strong>
-                    <span>Стартирайте „Преглед“ за някой доставчик, за да се появи тук.</span>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <ConfirmModal
-        pending={pendingApply}
-        onCancel={() => setPendingApply(null)}
-        onConfirm={() => {
-          if (pendingApply) void performRun(pendingApply.supplierKey, false, pendingApply.target);
-        }}
-      />
-    </DashboardLayout>
-  );
+      {(preview || showDiscovery && discovery) && <section className="panel inv-preview" aria-labelledby="preview-title"><div className="panel-heading"><div><p className="eyebrow">{showDiscovery ? 'Идентичности' : 'Преглед · без промени'}</p><h2 id="preview-title">{showDiscovery ? 'Съпоставяне на доставчиците' : `${names[selected]} · ${preview?.location.name}`}</h2></div><div className="inv-export"><Button size="sm" onClick={() => download('inventory-problems.csv', csv(filtered.filter(r => !['change', 'already', 'verified'].includes(r.status))), 'text/csv;charset=utf-8')}>Експорт на проблемите</Button>{showDiscovery && discovery && <Button size="sm" onClick={() => download('inventory-discovery.json', JSON.stringify(discovery, null, 2), 'application/json')}>Изтегли съпоставянето</Button>}</div></div>
+        {showDiscovery && discovery ? <><p className="inv-help">{discovery.proposedMappings} проверени записи са предложени. Записването се прави отделно, след одобрение. Припокриващите се продукти се управляват от B2BMarkt.</p><div className="inv-metrics inv-discovery">{suppliers.map(s => <div key={s.key}><strong>{s.name}: {discovery.summary[s.key].verified}</strong><span>потвърдени · {discovery.summary[s.key].unmatched} липсващи · {discovery.summary[s.key].conflicts + discovery.summary[s.key].insufficient} за преглед</span></div>)}</div>{discovery.prerequisites.map(p => <p key={p} className="inv-help">{p}</p>)}</> : preview && <><div className="inv-summary">{[['Редове', preview.summary.feedRows], ['Валидни', preview.summary.validRows], ['Съпоставени', preview.summary.matched], ['Промени', preview.summary.changes], ['Без промяна', preview.summary.alreadyCorrect], ['Несъпоставени', preview.summary.unmatched], ['Конфликти', preview.summary.conflicts], ['Невалидни', preview.summary.invalidQuantities], ['Пропуснати', preview.summary.skipped], ['Грешки', preview.summary.errors]].map(([label, count]) => <div key={label}><span>{label}</span><strong>{nf.format(Number(count))}</strong></div>)}</div><p className="inv-help">Преглед от {date(preview.generatedAt)} · Валиден до {date(preview.expiresAt)} · {preview.mappingReady ? 'Идентичностите на намерените продукти са проверени.' : 'Синхронизацията е блокирана до потвърждаване на идентичностите.'}</p></>}
+        <div className="inv-table-tools"><label>Търсене<input value={search} placeholder="Продукт, SKU или артикулен код" onChange={e => { setSearch(e.target.value); setPage(0); }} /></label><label>Статус<select value={filter} onChange={e => { setFilter(e.target.value); setPage(0); }}><option value="all">Всички</option><option value="problems">Само проблемите</option>{(showDiscovery ? ['verified', 'unmatched', 'conflict', 'insufficient'] : ['change', 'already', 'unmatched', 'conflict', 'invalid_quantity', 'skipped']).map(status => <option key={status} value={status}>{labels[status]}</option>)}</select></label></div>
+        <div className="table-wrap"><table><thead><tr><th>Продукт / доставчик</th><th>SKU / артикул</th><th className="num">Текуща</th><th className="num">Доставчик</th><th className="num">Промяна</th><th>Статус</th></tr></thead><tbody>{filtered.slice(page * 50, (page + 1) * 50).map(row => {
+          const qty = 'currentQuantity' in row ? row : null; const status = outcomes[row.rowId] || row.status;
+          return <tr key={row.rowId}><td><strong>{row.shopifyTitle || row.title}</strong><small className="inv-cell-detail">{names[row.supplier]} · {row.variantId || 'Няма потвърден вариант'}</small></td><td>{row.currentSku || row.itemCode || '—'}<small className="inv-cell-detail">ID: {row.supplierProductId || 'Липсва'}</small></td><td className="num">{qty?.currentQuantity ?? '—'}</td><td className="num">{qty?.quantity ?? '—'}</td><td className="num">{qty?.delta == null ? '—' : `${qty.delta > 0 ? '+' : ''}${qty.delta}`}</td><td><span className={`inv-row-state is-${status}`}>{labels[status] || status}</span><small className="inv-cell-detail">{row.reason ? reasons[row.reason] || row.reason : ''}{'owner' in row && row.overlap ? ` · Собственик: ${names[row.owner || 'b2bmarkt']}` : ''}</small></td></tr>;
+        })}{!filtered.length && <tr><td colSpan={6} className="empty-cell">Няма редове за избрания филтър.</td></tr>}</tbody></table></div>
+        <div className="inv-pagination"><span>{nf.format(filtered.length)} реда · Страница {Math.min(page + 1, pages)} от {pages}</span><Button size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>Назад</Button><Button size="sm" disabled={page + 1 >= pages} onClick={() => setPage(p => p + 1)}>Напред</Button></div>
+      </section>}
+      <section aria-labelledby="portal-title"><div className="section-heading"><div><p className="eyebrow">Портал за доставчици</p><h2 id="portal-title">B2BCenter</h2></div><p className="section-note">Отделно съпоставяне по артикул, клиент и производител</p></div><div className="inv-portal-grid">{suppliers.filter(s => s.key !== 'symetron').map(s => { const p = portal[s.key]; return <article className="supplier-card inv-portal" key={s.key}><div><h3>{s.name}</h3><p className="card-caption">{p ? `${p.planned} промени · ${p.skipped} пропуснати` : 'Непроверена връзка · нужен е преглед'}</p><small>Последен преглед: {date(p?.finishedAt || undefined)}</small></div><div className="card-actions"><Button disabled={!!busy} onClick={() => void inspectPortal(s.key)}>Преглед</Button><Button variant="primary" disabled={!!busy || !p?.previewToken || !p.planned} onClick={() => { setLarge(false); setPending({ supplier: s.key, portal: true }); }}>Синхронизирай</Button></div></article>; })}</div><p className="inv-help">Symetron в B2BCenter: идентичностите и собствеността не са потвърдени. Синхронизацията не е активирана.</p></section>
+      <section id="inventory-history" className="panel"><div className="panel-heading"><div><p className="eyebrow">История</p><h2>Последни операции</h2></div><Button size="sm" disabled={!!busy} onClick={() => void loadHistory()}>Обнови</Button></div>{historyError && <p role="status" className="inv-help">{historyError}</p>}{portalVolatile && <p className="inv-help">Историята на Shopify е постоянна. Логовете на портала във Vercel са временни.</p>}<div className="table-wrap"><table><thead><tr><th>Дестинация · Доставчик</th><th>Операция / статус</th><th>Начало / край</th><th className="num">Обновени</th><th className="num">Пропуснати</th><th className="num">Грешки</th></tr></thead><tbody>{history.map(h => <tr key={h.runId}><td>Shopify · {names[h.supplier] || 'Всички'}</td><td>{h.operation === 'backfill' ? 'Идентичности' : 'Наличности'} · {h.status === 'complete' ? 'Завършено' : 'Частично'}</td><td>{date(h.startedAt)}<small className="inv-cell-detail">{date(h.finishedAt)}</small></td><td className="num">{h.totals.updated}</td><td className="num">{h.totals.skipped}</td><td className="num">{h.totals.errors}</td></tr>)}{portalHistory.map((h, i) => <tr key={`portal-${i}`}><td>{h.supplier}</td><td>{h.mode === 'apply' ? 'Синхронизация' : 'Преглед'}</td><td>{date(h.finishedAt || undefined)}</td><td className="num">{h.updated}</td><td className="num">{h.skipped}</td><td className="num">{h.errors}</td></tr>)}{!history.length && !portalHistory.length && <tr><td colSpan={6} className="empty-cell">Няма записани операции. Прегледът не променя наличностите.</td></tr>}</tbody></table></div></section>
+      {pending && <div className="modal-overlay"><div className="modal" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="inv-confirm-title"><h3 id="inv-confirm-title">Потвърдете синхронизацията</h3><p>{names[pending.supplier]} · {pending.portal ? 'B2BCenter' : `Shopify · ${pendingPreview?.location.name}`}<br />{pending.portal ? portal[pending.supplier]?.planned : pendingPreview?.summary.changes} промени само в наличностите.</p>{needsLarge && <label className="inv-large"><input type="checkbox" checked={large} onChange={e => setLarge(e.target.checked)} />Одобрявам промяната на повече от 40% от съпоставените наличности.</label>}<p className="inv-help">Всяка партида проверява отново идентичността, собствеността и наблюдаваната наличност.</p><div className="modal-actions"><Button onClick={() => setPending(null)}>Отказ</Button><Button variant="primary" disabled={!!needsLarge && !large} onClick={() => void apply()}>Потвърди и синхронизирай</Button></div></div></div>}
+    </div>
+  </DashboardLayout>;
 }

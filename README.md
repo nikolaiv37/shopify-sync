@@ -7,10 +7,11 @@ Shopify.
 
 Inventory sync is manual only. There are no cron jobs in this project.
 
-| Supplier | Shopify vendor | Product tag | SKU tag | Stock tag |
-| --- | --- | --- | --- | --- |
-| Megapap | `Mebelcenter` | `<product>` | `<model>` | `<quantity>` |
-| B2BMarkt | `Europe` | `<Product>` | `<ProductCode>` | `<Stock>` |
+| Supplier | Shopify vendor | Product tag | Approved SKU tag | Legacy SKU tag | Stock tag |
+| --- | --- | --- | --- | --- | --- |
+| Megapap | `Mebelcenter` | `<product>` | `<sku>` | `<model>` | `<quantity>` |
+| Symetron | `Europe` | `<Product>` | `<ItemCode>` | `<ProductCode>` | `<Stock>` |
+| B2BMarkt | `Europe` | `<Product>` | `<ItemCode>` | `<ProductCode>` | `<Stock>` |
 
 The sync only updates Shopify inventory quantities. It does not change product
 titles, prices, vendors, tags, status, collections, handles, metafields, or
@@ -55,6 +56,12 @@ This will update Shopify inventory for [supplier]. Did you run a dry run first?
 The dashboard displays run status, updated count, error count, skipped count,
 planned count, elapsed time, supplier, mode, finished time, logs, and recent
 inventory runs from the configured log folder.
+
+The **SKU Migration** page at `/sku-migration` provides a read-only preview and
+confirmed, vendor-by-vendor Shopify SKU update. It re-validates the live variant,
+vendor, and current feed mapping before every write. Duplicate B2BMarkt
+`<ItemCode>` values are displayed explicitly; later automatic feed operations
+skip these ambiguous identifiers instead of guessing.
 
 ## CLI Usage
 
@@ -155,3 +162,9 @@ all `/api/*` endpoints are protected by the same password gate.
 
 See [DEPLOYMENT.md](/Users/nikolaiv37/projects/mebelcenter-shopify/DEPLOYMENT.md)
 for exact deployment steps.
+
+## Inventory Synchronization V2
+
+Inventory now uses separate durable Shopify supplier identity and location ownership metafields. Read-only discovery and previews are available for MegaPap, B2BMarkt, and Symetron. Mapping persistence and real quantity changes require distinct signed, explicitly confirmed operations; legacy unsigned Shopify Apply is blocked.
+
+See [the implementation and gated rollout guide](docs/inventory-v2-rollout.md) for coverage, prerequisites, deployment commands, one-batch verification, and recovery. Start with `npm run inventory:v2 -- help`. No production mappings or inventory quantities were changed during implementation.

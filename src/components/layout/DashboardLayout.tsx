@@ -2,10 +2,10 @@ import type { ReactNode } from 'react';
 import { logout } from '../../lib/api';
 import { appPath } from '../../app/router';
 import { BrandLogo } from './BrandLogo';
-import { HomeIcon, InventoryIcon, MissingIcon, PricesIcon } from './NavIcons';
+import { HomeIcon, InventoryIcon, MissingIcon, PricesIcon, SkuIcon } from './NavIcons';
 
 type Props = {
-  active: 'home' | 'inventory' | 'missing' | 'prices';
+  active: 'home' | 'inventory' | 'missing' | 'prices' | 'sku';
   eyebrow: string;
   title: string;
   subtitle: string;
@@ -61,6 +61,14 @@ export function DashboardLayout({ active, eyebrow, title, subtitle, wide = false
             onClick={() => navigate('/prices')}
           >
             <PricesIcon className="nav-ico" />Цени
+          </button>
+          <button
+            className={`nav-item nav-button ${active === 'sku' ? 'active' : ''}`}
+            type="button"
+            aria-current={active === 'sku' ? 'page' : undefined}
+            onClick={() => navigate('/sku-migration')}
+          >
+            <SkuIcon className="nav-ico" />Промяна на SKU
           </button>
         </nav>
         <div className="sidebar-foot">

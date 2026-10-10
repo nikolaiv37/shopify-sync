@@ -40,10 +40,10 @@ test('invalid wholesale → null target', () => {
 // ---------- feed index via the real MegaPap adapter shape ----------
 
 function megapapNode({ model, wholesale, name = 'X' }) {
-  return { model, name, wholesale_price_without_vat: wholesale, category: 'C' };
+  return { model: model ? `legacy-${model}` : '', sku: model, name, wholesale_price_without_vat: wholesale, category: 'C' };
 }
 
-test('buildFeedIndex parses MegaPap model/wholesale and flags feed duplicates', () => {
+test('buildFeedIndex parses approved MegaPap sku/wholesale and flags feed duplicates', () => {
   const products = [
     megapapNode({ model: 'M1', wholesale: '100' }),
     megapapNode({ model: 'M2', wholesale: '40' }),

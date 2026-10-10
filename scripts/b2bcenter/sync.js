@@ -19,6 +19,7 @@
  */
 
 import 'dotenv/config';
+import fs from 'node:fs/promises';
 import { runB2BCenterSync } from '../../lib/b2bcenterSync.js';
 
 async function main() {
@@ -51,7 +52,11 @@ async function main() {
     process.exit(1);
   }
 
+  const previewFile = args.find(a => a.startsWith('--preview-file='))?.slice('--preview-file='.length);
+  if (!previewFile) throw new Error('Apply now requires --preview-file=<dry-run JSON report>.');
+  const previewReport = JSON.parse(await fs.readFile(previewFile, 'utf8'));
   const result = await runB2BCenterSync({
+    previewToken: previewReport.previewToken,
     supplierKey,
     dryRun: false,
     confirm: true,

@@ -21,6 +21,8 @@ export type SyncSummary = {
   elapsed: number | null;
   elapsedSeconds: number | null;
   finishedAt: string | null;
+  previewToken?: string | null;
+  safety?: { plannedChangePct: number; maxChangePct: number; thresholdBlocked: boolean };
   logFiles?: unknown;
   logs?: string[];
 };
@@ -118,6 +120,61 @@ export type MissingProductsExportSummary = {
   rows: number;
   durationMs: number;
   excludedProducts?: Array<{ id: string; sku: string; title: string; reasons: string[] }>;
+};
+
+export type SkuSupplierInfo = {
+  key: SupplierKey;
+  name: string;
+  vendor: string;
+  oldField: string;
+  newField: string;
+  batchSize: number;
+};
+
+export type SkuMigrationStatus = 'change' | 'already' | 'unmatched' | 'conflict';
+
+export type SkuMigrationRow = {
+  oldSku: string;
+  newSku: string;
+  title: string;
+  shopifyTitle: string | null;
+  variantId: string | null;
+  productId: string | null;
+  vendor: string;
+  duplicateTarget: boolean;
+  selectable: boolean;
+  status: SkuMigrationStatus;
+  reason: string | null;
+};
+
+export type SkuMigrationSummary = {
+  totalFeedProducts: number;
+  toChange: number;
+  alreadyChanged: number;
+  unmatched: number;
+  conflicts: number;
+  duplicateTargetProducts: number;
+  duplicateTargetValues: number;
+  missingOldSku: number;
+  missingNewSku: number;
+};
+
+export type SkuMigrationPreview = {
+  supplier: SkuSupplierInfo;
+  generatedAt: string;
+  feedSnapshotAt: string;
+  shopifyVariantsScanned: number;
+  rows: SkuMigrationRow[];
+  summary: SkuMigrationSummary;
+};
+
+export type SkuApplyResult = {
+  variantId: string;
+  oldSku: string;
+  newSku: string;
+  status: 'success' | 'already' | 'skipped_stale' | 'conflict' | 'failed';
+  reason?: string;
+  error?: string;
 };
 
 export type SellingOperationType = 'keep' | 'source' | 'multiplier';
@@ -241,4 +298,30 @@ export type MissingProductsScanResult = {
   missingProducts: MissingProductRow[];
   warnings: string[];
   durationMs: number;
+};
+
+export type InventoryRow = {
+  rowId: string; supplier: SupplierKey; supplierProductId: string; itemCode: string;
+  title: string; shopifyTitle: string; currentSku: string; variantId: string | null;
+  currentQuantity: number | null; quantity: number | null; delta: number | null;
+  status: 'change' | 'already' | 'unmatched' | 'conflict' | 'invalid_quantity' | 'skipped'; reason: string | null;
+};
+export type InventoryPreview = {
+  version: string; runId: string; supplier: SupplierKey; generatedAt: string; expiresAt: string;
+  location: { id: string; name: string }; mappingReady: boolean; mappingMissing: number; canApply: boolean;
+  changePercent: number; thresholdExceeded: boolean; prerequisites: string[]; batches: string[]; rows: InventoryRow[];
+  summary: { feedRows: number; validRows: number; matched: number; unmatched: number; conflicts: number; invalidQuantities: number; changes: number; alreadyCorrect: number; skipped: number; errors: number };
+};
+export type InventoryBatchResult = {
+  results: Array<{ rowId?: string; variantId: string; status: string; reason?: string }>;
+  counts: { updated: number; skipped: number; errors: number }; replayed?: boolean;
+};
+export type InventoryHistory = {
+  runId: string; operation: 'inventory' | 'backfill'; supplier: SupplierKey | 'all'; target: 'shopify';
+  startedAt: string; finishedAt: string; status: string; totals: { updated: number; skipped: number; errors: number };
+};
+export type IdentityDiscovery = {
+  runId: string; generatedAt: string; expiresAt: string; proposedMappings: number; prerequisites: string[]; batches: string[];
+  summary: Record<SupplierKey, { total: number; verified: number; unmatched: number; insufficient: number; conflicts: number; overlaps: number }>;
+  rows: Array<{ rowId: string; supplier: SupplierKey; supplierProductId: string; itemCode: string; title: string; shopifyTitle?: string; currentSku?: string; variantId: string | null; status: string; reason: string; owner?: SupplierKey; overlap?: boolean }>;
 };

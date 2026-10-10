@@ -13,7 +13,7 @@
     "dev:api": "node dashboardServer.js",
     "start": "node dashboardServer.js",
     "build": "vite build && npm run check:backend && npm run typecheck",
-    "check:backend": "node --check dashboardServer.js && node --check api/index.js && node --check lib/dashboardApp.js && node --check lib/inventorySync.js && node --check lib/missing-products/dashboard.js && node --check sync.js && node --check scripts/b2bcenter/verify-db.js && node --check lib/b2bcenterSync.js && node --check scripts/b2bcenter/sync.js",
+    "check:backend": "node --check dashboardServer.js && node --check api/index.js && node --check lib/dashboardApp.js && node --check lib/inventorySync.js && node --check lib/missing-products/dashboard.js && node --check sync.js && node --check scripts/b2bcenter/verify-db.js && node --check lib/b2bcenterSync.js && node --check scripts/b2bcenter/sync.js && node --check lib/inventory/config.js && node --check lib/inventory/feeds.js && node --check lib/inventory/identity.js && node --check lib/inventory/authorization.js && node --check lib/inventory/shopify.js && node --check lib/inventory/service.js && node --check lib/inventory/setup.js && node --check scripts/inventory-v2.js",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test",
     "vercel-build": "npm run build",
@@ -75,7 +75,8 @@
     "seo:gsc404:apply:dry": "tsx scripts/seo/apply-gsc-404-redirects.ts --dry-run",
     "seo:gsc404:apply": "tsx scripts/seo/apply-gsc-404-redirects.ts --apply",
     "seo:gsc404:check-access": "tsx scripts/seo/apply-gsc-404-redirects.ts --check-access",
-    "seo:gsc404:typecheck": "tsc -p tsconfig.json"
+    "seo:gsc404:typecheck": "tsc -p tsconfig.json",
+    "inventory:v2": "node scripts/inventory-v2.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",

@@ -91,7 +91,7 @@ test('dashboard scan normalizes read-only result with injected Shopify client', 
     categoryMapOverride: {
       [megapapCategory]: { type: 'Гардероби', tags: ['Гардероби'] },
     },
-    createClient: fakeClient(['EXISTS']),
+    createClient: fakeClient(['EXISTS-A']),
   });
 
   assert.equal(result.supplier, 'megapap');
@@ -99,7 +99,7 @@ test('dashboard scan normalizes read-only result with injected Shopify client', 
   assert.equal(result.totals.supplierProducts, 2);
   assert.equal(result.totals.alreadyInShopify, 1);
   assert.equal(result.totals.missing, 1);
-  assert.equal(result.missingProducts[0].supplierSku, 'MISSING');
+  assert.equal(result.missingProducts[0].supplierSku, 'MISSING-A');
   assert.equal(result.missingProducts[0].validationState, 'valid');
   assert.equal(typeof result.durationMs, 'number');
   assert.ok('missingProducts' in result);
@@ -120,7 +120,7 @@ test('dashboard export includes warning-only products and excludes blocked produ
   const result = await exportMissingProductsCsv({
     supplierKey: 'megapap',
     categoryId: makeCategoryId(megapapCategory),
-    productIds: ['megapap:GOOD', 'megapap:WARN', 'megapap:BLOCKED', 'megapap:GOOD'],
+    productIds: ['megapap:GOOD-A', 'megapap:WARN-A', 'megapap:BLOCKED-A', 'megapap:GOOD-A'],
     parsedFeed: megapapFeed([
       {
         model: 'GOOD',
@@ -178,7 +178,7 @@ test('dashboard export excludes products already in Shopify', async () => {
     () => exportMissingProductsCsv({
       supplierKey: 'megapap',
       categoryId: makeCategoryId(megapapCategory),
-      productIds: ['megapap:EXISTS'],
+      productIds: ['megapap:EXISTS-A'],
       parsedFeed: megapapFeed([
         {
           model: 'EXISTS',
@@ -192,7 +192,7 @@ test('dashboard export excludes products already in Shopify', async () => {
         },
       ]),
       categoryMapOverride: { [megapapCategory]: { type: 'Гардероби', tags: ['Гардероби'] } },
-      createClient: fakeClient(['EXISTS']),
+      createClient: fakeClient(['EXISTS-A']),
     }),
     /No selected products are exportable/,
   );
@@ -202,7 +202,7 @@ test('dashboard export preserves CSV escaping and Megapap English copy', async (
   const result = await exportMissingProductsCsv({
     supplierKey: 'megapap',
     categoryId: makeCategoryId(megapapCategory),
-    productIds: ['megapap:CSV1'],
+    productIds: ['megapap:CSV1-A'],
     parsedFeed: megapapFeed([
       {
         model: 'CSV1',

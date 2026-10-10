@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
-import { InventoryIcon, MissingIcon, PricesIcon } from '../components/layout/NavIcons';
+import { InventoryIcon, MissingIcon, PricesIcon, SkuIcon } from '../components/layout/NavIcons';
 import { getMissingSuppliers } from '../lib/api';
 import type { MissingSupplier } from '../lib/types';
 
@@ -47,8 +47,8 @@ export function HomePage() {
         </div>
         <div className="home-stat">
           <span className="home-stat-label">Оперативни модула</span>
-          <strong className="home-stat-value">3</strong>
-          <span className="home-stat-hint">Наличности · Липсващи продукти · Цени</span>
+          <strong className="home-stat-value">4</strong>
+          <span className="home-stat-hint">Наличности · Липсващи продукти · Цени · SKU</span>
         </div>
         <div className="home-stat">
           <span className="home-stat-label">Състояние на системата</span>
@@ -97,6 +97,19 @@ export function HomePage() {
               <span className="home-module-name">Цени</span>
               <span className="home-module-desc">
                 Преглед и безопасна актуализация на Shopify цените спрямо актуалните доставни цени от feed-а. Първо преглед, след това потвърждение.
+              </span>
+              <span className="home-module-cta">Отвори →</span>
+            </span>
+          </button>
+
+          <button type="button" className="home-module" onClick={() => navigate('/sku-migration')}>
+            <span className="home-module-ico">
+              <SkuIcon />
+            </span>
+            <span className="home-module-body">
+              <span className="home-module-name">Промяна на SKU</span>
+              <span className="home-module-desc">
+                Преглед и контролирана миграция от стария Shopify SKU към одобрения XML идентификатор за всеки доставчик.
               </span>
               <span className="home-module-cta">Отвори →</span>
             </span>

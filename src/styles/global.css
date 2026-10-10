@@ -238,6 +238,21 @@ td.empty-cell span { display: block; color: var(--muted); font-size: 13px; }
   line-height: 1.45;
   font-weight: 500;
 }
+
+/* SKU migration */
+.sku-workflow { max-width: 940px; }
+.sku-mapping-card { display: flex; align-items: center; justify-content: center; gap: 14px; min-height: 46px; padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
+.sku-map-field { color: var(--ink-2); font: 600 13px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.sku-map-field.is-target { color: var(--brand-strong); }
+.sku-map-arrow { color: var(--faint); font-size: 18px; }
+.sku-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.sku-code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.sku-table .status-pill.change { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-border); }
+.sku-table .status-pill.already { background: var(--ok-bg); color: var(--ok-text); border-color: var(--ok-border); }
+.sku-table .status-pill.unmatched { background: var(--surface-3); color: var(--muted); border-color: var(--line); }
+.sku-table .status-pill.conflict { background: var(--err-bg); color: var(--err-text); border-color: var(--err-border); }
+@media (max-width: 900px) { .sku-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .sku-mapping-card { justify-content: flex-start; } .sku-stats { grid-template-columns: 1fr; } }
 .info-callout strong { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
 .pricing-note {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -654,3 +669,65 @@ td.empty-cell span { display: block; color: var(--muted); font-size: 13px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Inventory operations V2: scoped so Prices, SKU and Missing Products retain their layouts. */
+.inventory-v2 { display: grid; gap: 24px; }
+.inventory-v2 section { min-width: 0; }
+.inventory-v2 .section-heading { margin-bottom: 14px; }
+.inv-workflow { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; padding: 14px 18px; background: #fff; border: 1px solid #e8e1dc; border-radius: 14px; color: #675f59; font-size: 13px; }
+.inv-workflow .btn { margin-left: auto; }
+.inv-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.inventory-v2 .inv-card { padding: 22px; min-width: 0; transform: none; }
+.inventory-v2 .inv-card.is-selected { border-color: #c42c19; }
+.inventory-v2 .card-head { gap: 8px; margin-bottom: 10px; }
+.inventory-v2 h3 { font-size: 23px; margin: 0; }
+.inv-state { align-self: flex-start; padding: 5px 8px; border-radius: 8px; background: #f4eee8; color: #8c5b28; font-size: 11px; white-space: nowrap; }
+.inv-state.is-verified { color: #2a754b; background: #eaf4ee; }
+.inv-connection, .inv-help { font-size: 13px; color: #82786e; line-height: 1.6; margin: 10px 0; }
+.inv-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; border-block: 1px solid #eee7e0; padding: 15px 0; margin-block: 12px; }
+.inv-metrics strong { display: block; font-size: 24px; color: #292522; line-height: 1.3; }
+.inv-metrics span { display: block; color: #8a8078; font-size: 12px; }
+.inv-timestamps { font-size: 12px; margin-block: 12px; }
+.inv-timestamps div { display: flex; justify-content: space-between; gap: 8px; margin: 5px 0; }
+.inv-timestamps dt { color: #8a8078; }
+.inv-timestamps dd { margin: 0; }
+.inventory-v2 .card-actions { gap: 8px; margin-top: 12px; }
+.inventory-v2 .card-actions .btn { font-size: 12px; padding: 11px 9px; min-height: 40px; }
+.inv-card-links { display: flex; justify-content: space-between; margin-top: 12px; }
+.inv-card-links button, .inv-card-links a { font: inherit; font-size: 12px; color: #a53121; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
+.inv-card-links button:disabled { color: #b9aea5; cursor: default; }
+.inv-notice { margin: 0; padding: 12px 16px; background: #f2f7f1; color: #366146; border-radius: 12px; font-size: 14px; }
+.inv-notice.is-error { background: #fff1ec; color: #aa321e; }
+.inv-preview { scroll-margin-top: 20px; }
+.inv-export { display: flex; gap: 8px; flex-wrap: wrap; }
+.inv-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 16px 0; }
+.inv-summary div { border-radius: 10px; padding: 12px; background: #f8f5f1; }
+.inv-summary span { display: block; color: #83786e; font-size: 12px; }
+.inv-summary strong { display: block; font-size: 24px; margin-top: 4px; }
+.inv-discovery strong { font-size: 18px; }
+.inv-table-tools { display: flex; gap: 16px; margin: 18px 0; }
+.inv-table-tools label { display: grid; gap: 6px; font-size: 12px; color: #83786e; }
+.inv-table-tools label:first-child { flex: 1; }
+.inv-table-tools input, .inv-table-tools select { min-height: 40px; background: white; border: 1px solid #ded5cc; border-radius: 9px; padding: 8px 12px; font: inherit; color: #292522; }
+.inventory-v2 td { vertical-align: top; }
+.inventory-v2 td strong { font-weight: 600; }
+.inv-preview table { min-width: 880px; table-layout: fixed; }
+.inv-preview th:first-child { width: 30%; }
+.inv-preview th:nth-child(2) { width: 14%; }
+.inv-preview th:last-child { width: 25%; }
+.inv-preview td { white-space: normal; overflow-wrap: anywhere; }
+.inv-cell-detail { display: block; font-size: 11px; color: #91867c; margin-top: 5px; max-width: 460px; overflow-wrap: anywhere; }
+.inv-row-state { font-size: 12px; color: #70685f; }
+.inv-row-state.is-change { color: #c12b18; font-weight: 600; }
+.inv-row-state.is-conflict, .inv-row-state.is-invalid_quantity, .inv-row-state.is-failed { color: #ab531e; }
+.inv-row-state.is-success, .inv-row-state.is-verified { color: #287146; }
+.inv-pagination { display: flex; align-items: center; gap: 10px; margin-top: 15px; font-size: 12px; color: #82786e; }
+.inv-pagination span { margin-right: auto; }
+.inv-portal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.inventory-v2 .inv-portal { display: flex; align-items: center; gap: 16px; padding: 20px; }
+.inv-portal .card-actions { flex: 1; }
+.inv-portal small { font-size: 11px; color: #91867c; }
+.inv-large { display: flex; align-items: flex-start; gap: 10px; padding: 14px; margin-block: 18px; border: 1px solid #e6c5b5; border-radius: 10px; font-size: 14px; }
+.inventory-v2 :focus-visible { outline: 2px solid #c42c19; outline-offset: 3px; }
+@media (max-width: 1150px) { .inv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .inv-portal-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .inv-grid { grid-template-columns: 1fr; } .inv-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .inv-table-tools { flex-direction: column; } .inventory-v2 .inv-portal { flex-direction: column; align-items: stretch; } .inv-workflow { gap: 10px; } .inv-workflow .btn { margin-left: 0; } .inv-discovery { grid-template-columns: 1fr; } }

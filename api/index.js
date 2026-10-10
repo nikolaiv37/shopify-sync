@@ -1,5 +1,8 @@
 import { handleDashboardRequest } from '../lib/dashboardApp.js';
 
+// Full catalog previews paginate Shopify before returning their signed result.
+export const config = { maxDuration: 300 };
+
 export default async function handler(req, res) {
   try {
     await handleDashboardRequest(req, res);

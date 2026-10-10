@@ -8,6 +8,9 @@ import type {
   PriceSupplierInfo,
   RecentRun,
   SessionResponse,
+  SkuApplyResult,
+  SkuMigrationPreview,
+  SkuSupplierInfo,
   StatusResponse,
   SupplierCategory,
   SupplierKey,
@@ -72,6 +75,7 @@ export async function runSync(payload: {
   dryRun: boolean;
   confirm?: boolean;
   allowLargeApply?: boolean;
+  previewToken?: string;
 }) {
   const res = await fetch('/api/sync', {
     method: 'POST',
@@ -186,4 +190,60 @@ export async function rollbackPriceBatch(supplier: SupplierKey, items: RollbackB
     body: JSON.stringify({ supplier, items }),
   });
   return parseResponse<{ results: PriceApplyItemResult[] }>(res);
+}
+
+// ---------- SKU migration ----------
+
+export const SKU_API_VERSION = 'inventory-item-sku-v2';
+
+export async function getSkuSuppliers() {
+  const res = await fetch('/api/sku/suppliers', { credentials: 'same-origin' });
+  return parseResponse<{ apiVersion?: string; suppliers: SkuSupplierInfo[] }>(res);
+}
+
+export async function previewSkuMigration(supplier: SupplierKey) {
+  const res = await fetch('/api/sku/preview', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ apiVersion: SKU_API_VERSION, supplier }),
+  });
+  return parseResponse<SkuMigrationPreview>(res);
+}
+
+export type SkuApplyItem = { variantId: string; oldSku: string; newSku: string };
+
+export async function applySkuBatch(supplier: SupplierKey, items: SkuApplyItem[]) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 120_000);
+  try {
+    const res = await fetch('/api/sku/apply-batch', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ apiVersion: SKU_API_VERSION, supplier, items }),
+      signal: controller.signal,
+    });
+    return await parseResponse<{ results: SkuApplyResult[]; feedSnapshotAt: string }>(res);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('SKU партидата не отговори до 120 секунди. Проверете server terminal-а и опитайте отново.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+// Inventory V2 authorization is carried by signed server-issued batch receipts.
+import type { InventoryPreview, InventoryBatchResult, InventoryHistory, IdentityDiscovery } from './types';
+async function inventoryPost<T>(path: string, payload: object) {
+  const res = await fetch(`/api/inventory/${path}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  return parseResponse<T>(res);
+}
+export const previewInventory = (supplier: SupplierKey) => inventoryPost<InventoryPreview>('preview', { supplier });
+export const discoverInventoryIdentities = () => inventoryPost<IdentityDiscovery>('discovery', {});
+export const applyInventoryBatch = (supplier: SupplierKey, token: string, allowLargeApply: boolean) => inventoryPost<InventoryBatchResult>('apply-batch', { supplier, token, confirm: true, allowLargeApply });
+export async function getInventoryHistory() {
+  return parseResponse<{ runs: InventoryHistory[]; durable: boolean }>(await fetch('/api/inventory/history', { credentials: 'same-origin' }));
 }

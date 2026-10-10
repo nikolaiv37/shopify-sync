@@ -57,3 +57,15 @@ export function MissingIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+/** SKU migration — exchange one product identifier for another. */
+export function SkuIcon({ className }: IconProps) {
+  return (
+    <svg className={className} {...common}>
+      <path d="M4 7h13" />
+      <path d="m14 4 3 3-3 3" />
+      <path d="M20 17H7" />
+      <path d="m10 14-3 3 3 3" />
+    </svg>
+  );
+}

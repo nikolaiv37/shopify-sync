@@ -1,15 +1,7 @@
 #!/usr/bin/env node
-/**
- * Supplier XML → Shopify inventory sync.
- *
- * Usage:
- *   node sync.js                       # runs all suppliers, applies updates
- *   node sync.js all
- *   node sync.js megapap
- *   node sync.js b2bmarkt
- *
- *   node sync.js --dry-run             # runs all suppliers, no writes
- *   node sync.js megapap --dry-run     # per-supplier dry-run
+/** Legacy preview command. Live apply now requires a signed V2 report and --confirm.
+ * node sync.js megapap --dry-run
+ * node scripts/inventory-v2.js help
  */
 
 import 'dotenv/config';
