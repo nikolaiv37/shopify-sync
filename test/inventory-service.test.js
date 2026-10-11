@@ -104,20 +104,20 @@ test('mapping discovery retains Shopify title, current SKU, and selected locatio
  const f=fixture({mapped:false});f.variants[0].title='Shopify title';const d=await f.service.discovery();assert.equal(d.rows[0].shopifyTitle,'Shopify title');assert.equal(d.rows[0].currentSku,'NEW-0');assert.equal(d.rows[0].currentQuantity,3);assert.equal(d.rows[0].quantity,7);
 });
 
-test('vendor setup signs only proposals owned by selected supplier and keeps global overlap decisions',async()=>{
+test('vendor setup preserves known B2BMarkt ownership without downloading other feeds',async()=>{
  const f=fixture({mapped:false,count:3});
  f.records[1].supplier='b2bmarkt';f.records[1].platformId='platform-overlap';
  f.records[2].supplier='symetron';f.variants[1].vendor='Europe';f.variants[2].vendor='Europe';
  f.records.push({...f.records[1],supplier:'symetron',rowId:'symetron:overlap'});
  const all=await f.service.discovery();assert.equal(all.proposedMappings,3);
+ const sharedProposal=verifyPreview(all.batches[0],{}, {key,now:100000}).items.find(p=>p.variantId===f.variants[1].variantId);
+ f.variants[1].identityValue=JSON.stringify(sharedProposal.identity);f.variants[1].ownershipValue=JSON.stringify(sharedProposal.ownership);
  const sym=await f.service.discovery({supplier:'symetron'});
  assert.equal(sym.supplier,'symetron');assert.equal(sym.rows.length,2);assert.equal(sym.proposedMappings,1);
  const payload=verifyPreview(sym.batches[0],{}, {key,now:100000});
  assert.equal(payload.items.length,1);assert.equal(payload.items[0].ownership.locations[locationId].supplier,'symetron');
- const b2b=await f.service.discovery({supplier:'b2bmarkt'});assert.equal(b2b.proposedMappings,1);
- const shared=verifyPreview(b2b.batches[0],{}, {key,now:100000}).items[0];
- assert.deepEqual(Object.keys(shared.identity.suppliers).sort(),['b2bmarkt','symetron']);
- assert.equal(shared.ownership.locations[locationId].supplier,'b2bmarkt');
+ const b2b=await f.service.discovery({supplier:'b2bmarkt'});assert.equal(b2b.proposedMappings,0);
+ assert.equal(sym.rows.find(r=>r.rowId==='symetron:overlap').owner,'b2bmarkt');
  await f.service.persistBatch({token:sym.batches[0],confirm:true});
  assert.equal(f.writes.length,1);assert.equal(f.writes[0].proposal.variantId,f.variants[2].variantId);
  const preview=await f.service.preview({supplier:'symetron',allowPartial:true});assert.equal(preview.canApply,true);
@@ -125,4 +125,56 @@ test('vendor setup signs only proposals owned by selected supplier and keeps glo
 });
 test('vendor setup rejects unknown supplier rather than falling back to every supplier',async()=>{
  const f=fixture({mapped:false});await assert.rejects(f.service.discovery({supplier:'unknown'}));assert.equal(f.writes.length,0);
+});
+
+test('vendor preview and apply fetch only selected feed and never scan the catalog per batch',async()=>{
+ const f=fixture({count:205});let scans=0;const lookups=[],feedKeys=[];
+ const originalScan=f.store.readVariants;
+ f.store.readVariants=async(...args)=>{scans++;return originalScan(...args);};
+ f.store.readVariantBatch=async ids=>{lookups.push(ids);return structuredClone(f.variants.filter(v=>ids.includes(v.variantId)));};
+ const service=createInventoryService({store:f.store,getFeeds:async({supplier})=>{feedKeys.push(supplier);return Object.fromEntries(['megapap','b2bmarkt','symetron'].map(key=>[key,{records:key==='megapap'?structuredClone(f.records):[],fingerprint:key==='megapap'?fingerprint(f.records):'empty'}]));},auth:{key},now:()=>100000});
+ let calls=0;f.store.setQuantities=async rows=>{calls++;for(const row of rows)f.variants.find(v=>v.variantId===row.variantId).available=row.quantity;return rows.map(row=>({variantId:row.variantId,rowId:row.rowId,status:'success'}));};
+ const preview=await service.preview({supplier:'megapap'});assert.equal(preview.batches.length,3);
+ for(const token of preview.batches)await service.applyBatch({supplier:'megapap',token,confirm:true,allowLargeApply:true});
+ assert.equal(scans,1);assert.equal(calls,3);assert.deepEqual(lookups.map(ids=>ids.length),[100,100,5]);assert.deepEqual(feedKeys,['megapap','megapap','megapap','megapap']);
+});
+test('mapping setup is reused from preview; metadata writes are grouped and verified in batches',async()=>{
+ const f=fixture({mapped:false,count:25});let scanCount=0;const original=f.store.readVariants;
+ f.store.readVariants=async()=>{scanCount++;return original();};const groups=[];
+ f.store.persistProposals=async proposals=>{groups.push(proposals.length);for(const p of proposals)await f.store.persistProposal(p);};
+ f.store.readVariantBatch=async ids=>structuredClone(f.variants.filter(v=>ids.includes(v.variantId)));
+ const preview=await f.service.preview({supplier:'megapap'});assert.equal(preview.setup.proposedMappings,25);
+ const result=await f.service.persistBatch({token:preview.setup.batches[0],confirm:true});
+ assert.equal(result.counts.updated,25);assert.deepEqual(groups,[12,12,1]);assert.equal(scanCount,1);assert.equal(f.writes.every(w=>w.type==='mapping'),true);
+});
+test('Shopify batch quantity mutation preserves compare quantities and rejects uncertain mixed results',async()=>{
+ const calls=[];let response={inventoryAdjustmentGroup:{id:'adjustment'},userErrors:[]};
+ const store=createInventoryStore({gql:async(_q,args)=>{calls.push(args);return {inventorySetQuantities:response};}});
+ const rows=[{variantId:'v1',rowId:'r1',inventoryItemId:'i1',quantity:7,currentQuantity:3},{variantId:'v2',rowId:'r2',inventoryItemId:'i2',quantity:0,currentQuantity:8}];
+ assert.equal((await store.setQuantities(rows,locationId,'run')).filter(r=>r.status==='success').length,2);
+ assert.deepEqual(calls[0].input.quantities,rows.map(r=>({inventoryItemId:r.inventoryItemId,locationId,quantity:r.quantity,compareQuantity:r.currentQuantity})));
+ assert.equal('ignoreCompareQuantity' in calls[0].input,false);
+ response={inventoryAdjustmentGroup:null,userErrors:[{code:'COMPARE_QUANTITY_STALE',message:'changed'}]};assert.equal((await store.setQuantities(rows,locationId,'run')).every(r=>r.status==='stale'),true);
+ response={inventoryAdjustmentGroup:{id:'mixed'},userErrors:[{message:'partial?'}]};await assert.rejects(store.setQuantities(rows,locationId,'run'),/both an adjustment/);
+});
+
+test('lightweight vendor index fetches location quantities only for relevant candidates and retains duplicate identities',async()=>{
+ const calls=[],progress=[];
+ const raw=(id,sku,identity=null)=>({id,sku,barcode:'',product:{id:`product-${id}`,title:id,handle:'unrelated',vendor:'Europe'},identity:identity?{value:JSON.stringify(identity),compareDigest:'d'}:null,ownership:null});
+ const rows=[raw('v1','selected-sku'),raw('v2','unrelated-sku',{version:1,suppliers:{symetron:'selected-id'}}),raw('v3','other-sku',{version:1,suppliers:{b2bmarkt:'other-id'}})];
+ const client={gqlWithRetry:async(q,args)=>{calls.push({q,args});if(q.includes('productVariants('))return {productVariants:{nodes:rows,pageInfo:{hasNextPage:false}}};return {nodes:rows.filter(v=>args.ids.includes(v.id)).map(v=>({...v,inventoryItem:{id:`item-${v.id}`,tracked:true,inventoryLevel:{quantities:[{name:'available',quantity:4}]}}}))};}};
+ const result=await createInventoryStore(client).readVariants(locationId,v=>progress.push(v),'symetron',[{supplierProductId:'selected-id',itemCode:'selected-sku',barcode:'',platformId:''}]);
+ assert.equal(calls.length,2);assert.match(calls[0].args.query,/vendor:"Europe"/);assert.doesNotMatch(calls[0].q,/inventoryLevel|\$location/);assert.deepEqual(calls[1].args.ids,['v1','v2']);
+ assert.equal(result.length,3);assert.equal(result[0].available,4);assert.equal(result[2].available,null);assert.equal(progress[0],3);assert.deepEqual(progress[1],{stage:'quantities',processed:2,total:2});
+});
+
+test('post-setup preview rereads journaled variants instead of scanning Shopify again and binds vendor/location',async()=>{
+ const f=fixture({mapped:false,count:3});let scans=0;const original=f.store.readVariants;
+ f.store.readVariants=async()=>{scans++;return original();};
+ f.store.readVariantBatch=async ids=>structuredClone(f.variants.filter(v=>ids.includes(v.variantId)));
+ const preview=await f.service.preview({supplier:'megapap'});await f.service.persistBatch({token:preview.setup.batches[0],confirm:true});
+ const refreshed=await f.service.preview({supplier:'megapap',allowPartial:true,setupRunId:preview.setup.runId});
+ assert.equal(scans,1);assert.equal(refreshed.summary.changes,3);assert.equal(refreshed.canApply,true);
+ await assert.rejects(f.service.preview({supplier:'symetron',setupRunId:preview.setup.runId}),/Няма завършено/);
+ await assert.rejects(f.service.preview({supplier:'megapap',setupRunId:'unknown'}),/Няма завършено/);
 });

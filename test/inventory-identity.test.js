@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeRecords, parseQuantity, fingerprint } from '../lib/inventory/feeds.js';
+import { normalizeRecords, parseQuantity, fingerprint, loadFeeds } from '../lib/inventory/feeds.js';
 import { discoverIdentities, classifyInventory, decodeIdentity } from '../lib/inventory/identity.js';
 import { parsePortalFeed } from '../lib/b2bcenterSync.js';
 
@@ -97,4 +97,10 @@ test('portal shares strict parsing and legacy IDs, blocks duplicates, preserves 
 test('repeated XML identifier fields cannot select an arbitrary supplier identity',()=>{
  const rows=normalizeRecords('b2bmarkt',[{ProductCode:['001','002'],ItemCode:'SKU',ProductId:['10','20'],Stock:'4'}]);
  assert.equal(rows[0].supplierProductId,'');assert.equal(rows[0].platformId,'');assert.equal(rows[0].quantity,4);
+});
+
+
+test('selected vendor feed does not fetch or require the other supplier URLs',async()=>{
+ const urls=[];const result=await loadFeeds({supplier:'megapap',env:{MEGAPAP_FEED_URL:'https://supplier.test/selected'},fetchImpl:async url=>{urls.push(url);return {ok:true,text:async()=>'<products><product><model>001</model><sku>NEW</sku><quantity>7</quantity></product></products>'};}});
+ assert.deepEqual(urls,['https://supplier.test/selected']);assert.deepEqual(Object.keys(result),['megapap']);assert.equal(result.megapap.records[0].supplierProductId,'001');
 });

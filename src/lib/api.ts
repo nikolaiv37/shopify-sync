@@ -241,9 +241,30 @@ async function inventoryPost<T>(path: string, payload: object) {
   const res = await fetch(`/api/inventory/${path}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   return parseResponse<T>(res);
 }
-export const previewInventory = (supplier: SupplierKey, allowPartial = false) => inventoryPost<InventoryPreview>('preview', { supplier, allowPartial });
+export type InventoryReadProgress = number | { stage: string; processed?: number; total?: number };
+async function inventoryRead<T>(path: string, payload: object, onProgress?: (value: InventoryReadProgress) => void): Promise<T> {
+  if (!onProgress) return inventoryPost<T>(path, payload);
+  const response = await fetch(`/api/inventory/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ ...payload, stream: true }) });
+  if (!response.ok || !response.headers.get('content-type')?.includes('application/x-ndjson')) return parseResponse<T>(response);
+  if (!response.body) throw new Error('Няма отговор от прегледа.');
+  const reader = response.body.getReader(), decoder = new TextDecoder(); let buffer = '', result: T | undefined;
+  for (;;) {
+    const { done, value } = await reader.read(); buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split('\n'); buffer = lines.pop() || '';
+    for (const line of lines) if (line.trim()) {
+      const event = JSON.parse(line);
+      if (event.error) throw new Error(event.error);
+      if (event.progress !== undefined) onProgress(event.progress);
+      if (event.result !== undefined) result = event.result;
+    }
+    if (done) break;
+  }
+  if (result === undefined) throw new Error('Прегледът бе прекъснат. Опитайте отново.');
+  return result;
+}
+export const previewInventory = (supplier: SupplierKey, allowPartial = false, onProgress?: (value: InventoryReadProgress) => void, setupRunId?: string) => inventoryRead<InventoryPreview>('preview', { supplier, allowPartial, setupRunId }, onProgress);
 export const persistInventoryMappings = (token: string, initializeDefinitions: boolean) => inventoryPost<InventoryBatchResult>('backfill-batch', { token, confirm: true, initializeDefinitions });
-export const discoverInventoryIdentities = (supplier?: SupplierKey) => inventoryPost<IdentityDiscovery>('discovery', { supplier });
+export const discoverInventoryIdentities = (supplier?: SupplierKey, onProgress?: (value: InventoryReadProgress) => void) => inventoryRead<IdentityDiscovery>('discovery', { supplier }, onProgress);
 export const applyInventoryBatch = (supplier: SupplierKey, token: string, allowLargeApply: boolean) => inventoryPost<InventoryBatchResult>('apply-batch', { supplier, token, confirm: true, allowLargeApply });
 export async function getInventoryHistory() {
   return parseResponse<{ runs: InventoryHistory[]; durable: boolean }>(await fetch('/api/inventory/history', { credentials: 'same-origin' }));

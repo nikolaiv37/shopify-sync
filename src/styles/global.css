@@ -731,3 +731,8 @@ td.empty-cell span { display: block; color: var(--muted); font-size: 13px; }
 .inventory-v2 :focus-visible { outline: 2px solid #c42c19; outline-offset: 3px; }
 @media (max-width: 1150px) { .inv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .inv-portal-grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .inv-grid { grid-template-columns: 1fr; } .inv-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .inv-table-tools { flex-direction: column; } .inventory-v2 .inv-portal { flex-direction: column; align-items: stretch; } .inv-workflow { gap: 10px; } .inv-workflow .btn { margin-left: 0; } .inv-discovery { grid-template-columns: 1fr; } }
+
+.inv-live-progress { display: flex; flex-wrap: wrap; gap: 10px 24px; padding: 18px; border: 1px solid #e6dfd9; border-radius: 12px; background: white; margin: 12px 0 24px; }
+.inv-live-progress small { flex-basis: 100%; color: #827d77; }
+
+.progress-bar.is-determinate::after { width: 100%; animation: none; transform: none; }

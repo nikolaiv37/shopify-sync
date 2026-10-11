@@ -28,3 +28,16 @@ test('legacy Shopify apply endpoint cannot bypass signed Preview authorization',
  const old=process.env.DASHBOARD_PASSWORD;process.env.DASHBOARD_PASSWORD='test-local';
  try{const res=response();await handleDashboardRequest({url:'/api/sync',method:'POST',headers:{host:'localhost',cookie:cookie('test-local')},body:{target:'shopify',supplierKey:'megapap',dryRun:false,confirm:true}},res);assert.equal(res.statusCode,409);assert.match(String(res.body),/signed Inventory V2 preview/);}finally{if(old==null)delete process.env.DASHBOARD_PASSWORD;else process.env.DASHBOARD_PASSWORD=old;}
 });
+
+test('streamed inventory errors use compressed NDJSON and finish the authenticated response',async()=>{
+ const {Writable}=await import('node:stream');const {once}=await import('node:events');const {gunzipSync}=await import('node:zlib');
+ const keys=['DASHBOARD_PASSWORD','SHOPIFY_STORE_DOMAIN','SHOPIFY_CLIENT_ID','SHOPIFY_CLIENT_SECRET'];const old=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+ for(const key of keys)process.env[key]='test-only';
+ const chunks=[];const res=new Writable({write(chunk,_encoding,callback){chunks.push(chunk);callback();}});res.writeHead=function(code,headers){this.statusCode=code;this.headers=headers;};res.flushHeaders=()=>{};
+ try{
+  const finished=once(res,'finish');
+  await handleDashboardRequest({url:'/api/inventory/preview',method:'POST',headers:{host:'localhost',cookie:cookie('test-only')},body:{supplier:'invalid',stream:true}},res);await finished;
+  assert.equal(res.statusCode,200);assert.equal(res.headers['Content-Encoding'],'gzip');assert.match(res.headers['Content-Type'],/ndjson/);
+  const events=gunzipSync(Buffer.concat(chunks)).toString().trim().split('\n').map(line=>JSON.parse(line));assert.equal(events[0].progress.stage,'feed');assert.match(events.at(-1).error,/доставчик/);
+ }finally{for(const key of keys)if(old[key]===undefined)delete process.env[key];else process.env[key]=old[key];}
+});

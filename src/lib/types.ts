@@ -307,6 +307,7 @@ export type InventoryRow = {
   status: 'change' | 'already' | 'unmatched' | 'conflict' | 'invalid_quantity' | 'skipped'; reason: string | null;
 };
 export type InventoryPreview = {
+  setup?: IdentityDiscovery;
   version: string; runId: string; supplier: SupplierKey; generatedAt: string; expiresAt: string;
   location: { id: string; name: string }; mappingReady: boolean; mappingMissing: number; canApply: boolean; partial?: boolean;
   changePercent: number; thresholdExceeded: boolean; prerequisites: string[]; batches: string[]; rows: InventoryRow[];
