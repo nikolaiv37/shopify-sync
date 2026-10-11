@@ -243,7 +243,7 @@ async function inventoryPost<T>(path: string, payload: object) {
 }
 export const previewInventory = (supplier: SupplierKey, allowPartial = false) => inventoryPost<InventoryPreview>('preview', { supplier, allowPartial });
 export const persistInventoryMappings = (token: string, initializeDefinitions: boolean) => inventoryPost<InventoryBatchResult>('backfill-batch', { token, confirm: true, initializeDefinitions });
-export const discoverInventoryIdentities = () => inventoryPost<IdentityDiscovery>('discovery', {});
+export const discoverInventoryIdentities = (supplier?: SupplierKey) => inventoryPost<IdentityDiscovery>('discovery', { supplier });
 export const applyInventoryBatch = (supplier: SupplierKey, token: string, allowLargeApply: boolean) => inventoryPost<InventoryBatchResult>('apply-batch', { supplier, token, confirm: true, allowLargeApply });
 export async function getInventoryHistory() {
   return parseResponse<{ runs: InventoryHistory[]; durable: boolean }>(await fetch('/api/inventory/history', { credentials: 'same-origin' }));

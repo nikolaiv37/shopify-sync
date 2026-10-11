@@ -89,8 +89,28 @@ export function InventorySyncPage() {
     try { await action(); } catch (e) { setError(e instanceof Error ? e.message : 'Операцията не бе изпълнена. Обновете прегледа.'); }
     finally { if (key.startsWith('apply-') || key === 'backfill') await loadHistory(); guard.current = false; setBusy(null); setClock(Date.now()); }
   }
-  async function inspect(supplier: SupplierKey, allowPartial = false) {
+  async function inspect(supplier: SupplierKey, allowPartial = true) {
     await task(`preview-${supplier}`, async () => { setSelected(supplier); setShowDiscovery(false); setPage(0); setOutcomes({}); const p = await previewInventory(supplier, allowPartial); setPreviews(prev => ({ ...prev, [supplier]: p })); setMessage(`${names[supplier]}: прегледът е готов. Няма направени промени.${p.partial ? ' Ще се синхронизират само потвърдените продукти; останалите се пропускат.' : ''}`); });
+  }
+  async function startVendorSync(supplier: SupplierKey) {
+    await task(`prepare-${supplier}`, async () => {
+      setSelected(supplier); setShowDiscovery(false); setPage(0); setLarge(false);
+      let p = previews[supplier];
+      if (!p || Date.now() >= new Date(p.expiresAt).getTime() || (!p.canApply && !p.mappingMissing)) {
+        p = await previewInventory(supplier, true);
+        setPreviews(prev => ({ ...prev, [supplier]: p }));
+      }
+      if (p.canApply) { setPending({ supplier, portal: false }); return; }
+      if (p.mappingMissing || p.prerequisites.length) {
+        const report = await discoverInventoryIdentities(supplier);
+        setDiscovery(report); setShowDiscovery(true); setFilter('all');
+        if (report.prerequisites.length) throw new Error(report.prerequisites.join(' '));
+        if (!report.batches.length) throw new Error('Няма проверени съпоставяния за запис за този доставчик. Проверете проблемните редове.');
+        setMappingConfirm(true);
+        return;
+      }
+      setMessage(`${names[supplier]}: няма допустими промени в наличностите. Проверете редовете за преглед.`);
+    });
   }
   async function saveMappings() {
     setMappingConfirm(false);
@@ -106,7 +126,14 @@ export function InventorySyncPage() {
         const result = await persistInventoryMappings(token, index === 0);
         saved += result.counts.updated; skipped += result.counts.skipped; errors += result.counts.errors;
       }
-      setMessage(`Съпоставяне: ${saved} записани, ${skipped} пропуснати, ${errors} грешки. Наличностите не са променени. Направете преглед на проверените продукти за избрания доставчик.`);
+      setMessage(`Съпоставяне: ${saved} записани, ${skipped} пропуснати, ${errors} грешки. Наличностите не са променени.`);
+      if (report.supplier && !stopMapping.current && !errors) {
+        const p = await previewInventory(report.supplier, true);
+        setPreviews(prev => ({ ...prev, [report.supplier!]: p }));
+        setSelected(report.supplier); setShowDiscovery(false); setLarge(false);
+        if (p.canApply) setPending({ supplier: report.supplier, portal: false });
+        else setMessage(`${names[report.supplier]}: съпоставянето е записано. Няма допустими промени в наличностите; проверете резултата от прегледа.`);
+      }
     });
   }
   async function inspectMappings() {
@@ -149,10 +176,10 @@ export function InventorySyncPage() {
   return <DashboardLayout active="inventory" eyebrow="Оперативен панел" title="Синхронизация на наличности" subtitle="Прегледайте промените и проблемите, след което потвърдете синхронизацията за избрания доставчик и локация.">
     <div className="inventory-v2">
       <div className="inv-workflow"><span>1 · Преглед</span><span>2 · Проверка на промените</span><span>3 · Потвърждение и синхронизация</span><Button size="sm" onClick={() => void inspectMappings()} disabled={!!busy}>Преглед на съпоставянето</Button></div>
-      <p className="inv-help">При първо използване: „Преглед на съпоставянето“ → проверете резултата → „Запиши проверените съпоставяния“. След това направете преглед на наличностите и потвърдете синхронизацията.</p>
+      <p className="inv-help">Изберете „Синхронизирай“ при желания доставчик. Ако е нужно съпоставяне, потвърдете записването му; след това проверете и потвърдете отделно промените в наличностите.</p>
       {showDiscovery && discovery && <div className="inv-workflow"><Button variant="primary" disabled={!!busy || !discovery.batches.length || discovery.prerequisites.length > 0 || clock >= new Date(discovery.expiresAt).getTime()} onClick={() => setMappingConfirm(true)}>Запиши проверените съпоставяния</Button><span>{nf.format(discovery.proposedMappings)} предложени записи · без промяна на наличности</span></div>}
       {busy === 'backfill' && <Button onClick={() => { stopMapping.current = true; setMessage('Съпоставянето ще спре след текущата партида. Завършените записи се запазват.'); }}>Спри след текущата партида</Button>}
-      {busy && <Progress text={busy === 'discovery' ? 'Проверяват се идентичностите в трите каталога и Shopify…' : busy.startsWith('apply') || busy === 'backfill' ? message || 'Проверка и прилагане на партидата…' : 'Четат се каталозите и наличностите. Без записи…'} />}
+      {busy && <Progress text={busy === 'discovery' || busy?.startsWith('prepare-') ? 'Проверяват се идентичностите в трите каталога и Shopify…' : busy.startsWith('apply') || busy === 'backfill' ? message || 'Проверка и прилагане на партидата…' : 'Четат се каталозите и наличностите. Без записи…'} />}
       <div aria-live="polite">{message && <p className="inv-notice">{message}</p>}</div>
       {error && <p className="inv-notice is-error" role="alert">{error} Завършените партиди остават записани; проверете историята преди повторение.</p>}
       <section aria-labelledby="shopify-title"><div className="section-heading"><div><p className="eyebrow">Онлайн магазин</p><h2 id="shopify-title">Наличности в Shopify</h2></div><p className="section-note">Наличност за конкретната локация · Само потвърдени идентичности</p></div>
@@ -166,7 +193,7 @@ export function InventorySyncPage() {
             {p?.mappingMissing ? <p className="inv-help">{p.mappingMissing} идентичности чакат потвърдено записване.</p> : null}
             {p?.prerequisites.map(text => <p className="inv-help" key={text}>{text}</p>)}
             {p?.partial && <p className="inv-help">Частичен преглед: само проверените продукти. {p.summary.skipped} проблемни или недопустими реда се пропускат.</p>}
-            <div className="card-actions"><Button variant="secondary" disabled={!!busy} onClick={() => void inspect(s.key)}>Преглед на промените</Button><Button variant="primary" disabled={!!busy || !p?.canApply || expired(p)} onClick={() => { setLarge(false); setPending({ supplier: s.key, portal: false }); }}>{p?.partial ? 'Синхронизирай проверените' : 'Синхронизирай'}</Button></div>
+            <div className="card-actions"><Button variant="secondary" disabled={!!busy} onClick={() => void inspect(s.key)}>Преглед на промените</Button><Button variant="primary" disabled={!!busy} onClick={() => void startVendorSync(s.key)}>{p?.partial ? 'Синхронизирай проверените' : 'Синхронизирай'}</Button></div>
             {p && !p.mappingReady && p.prerequisites.length === 0 && <Button size="sm" disabled={!!busy} onClick={() => void inspect(s.key, true)}>Преглед само на проверените</Button>}
             <div className="inv-card-links"><button disabled={!p || !!busy} onClick={() => { setSelected(s.key); setShowDiscovery(false); setFilter('problems'); setPage(0); }}>Виж проблемите</button><a href="#inventory-history">История</a></div>
           </article>;
@@ -184,7 +211,7 @@ export function InventorySyncPage() {
       <section aria-labelledby="portal-title"><div className="section-heading"><div><p className="eyebrow">Портал за доставчици</p><h2 id="portal-title">B2BCenter</h2></div><p className="section-note">Отделно съпоставяне по артикул, клиент и производител</p></div><div className="inv-portal-grid">{suppliers.filter(s => s.key !== 'symetron').map(s => { const p = portal[s.key]; return <article className="supplier-card inv-portal" key={s.key}><div><h3>{s.name}</h3><p className="card-caption">{p ? `${p.planned} промени · ${p.skipped} пропуснати` : 'Непроверена връзка · нужен е преглед'}</p><small>Последен преглед: {date(p?.finishedAt || undefined)}</small></div><div className="card-actions"><Button disabled={!!busy} onClick={() => void inspectPortal(s.key)}>Преглед</Button><Button variant="primary" disabled={!!busy || !p?.previewToken || !p.planned} onClick={() => { setLarge(false); setPending({ supplier: s.key, portal: true }); }}>Синхронизирай</Button></div></article>; })}</div><p className="inv-help">Symetron в B2BCenter: идентичностите и собствеността не са потвърдени. Синхронизацията не е активирана.</p></section>
       <section id="inventory-history" className="panel"><div className="panel-heading"><div><p className="eyebrow">История</p><h2>Последни операции</h2></div><Button size="sm" disabled={!!busy} onClick={() => void loadHistory()}>Обнови</Button></div>{historyError && <p role="status" className="inv-help">{historyError}</p>}{portalVolatile && <p className="inv-help">Историята на Shopify е постоянна. Логовете на портала във Vercel са временни.</p>}<div className="table-wrap"><table><thead><tr><th>Дестинация · Доставчик</th><th>Операция / статус</th><th>Начало / край</th><th className="num">Обновени</th><th className="num">Пропуснати</th><th className="num">Грешки</th></tr></thead><tbody>{history.map(h => <tr key={h.runId}><td>Shopify · {names[h.supplier] || 'Всички'}</td><td>{h.operation === 'backfill' ? 'Идентичности' : 'Наличности'} · {h.status === 'complete' ? 'Завършено' : 'Частично'}</td><td>{date(h.startedAt)}<small className="inv-cell-detail">{date(h.finishedAt)}</small></td><td className="num">{h.totals.updated}</td><td className="num">{h.totals.skipped}</td><td className="num">{h.totals.errors}</td></tr>)}{portalHistory.map((h, i) => <tr key={`portal-${i}`}><td>{h.supplier}</td><td>{h.mode === 'apply' ? 'Синхронизация' : 'Преглед'}</td><td>{date(h.finishedAt || undefined)}</td><td className="num">{h.updated}</td><td className="num">{h.skipped}</td><td className="num">{h.errors}</td></tr>)}{!history.length && !portalHistory.length && <tr><td colSpan={6} className="empty-cell">Няма записани операции. Прегледът не променя наличностите.</td></tr>}</tbody></table></div></section>
       {pending && <div className="modal-overlay"><div className="modal" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="inv-confirm-title"><h3 id="inv-confirm-title">Потвърдете синхронизацията</h3><p>{names[pending.supplier]} · {pending.portal ? 'B2BCenter' : `Shopify · ${pendingPreview?.location.name}`}<br />{pending.portal ? portal[pending.supplier]?.planned : pendingPreview?.summary.changes} промени само в наличностите.</p>{needsLarge && <label className="inv-large"><input type="checkbox" checked={large} onChange={e => setLarge(e.target.checked)} />Одобрявам промяната на повече от 40% от съпоставените наличности.</label>}<p className="inv-help">Всяка партида проверява отново идентичността, собствеността и наблюдаваната наличност.</p><div className="modal-actions"><Button onClick={() => setPending(null)}>Отказ</Button><Button variant="primary" disabled={!!needsLarge && !large} onClick={() => void apply()}>Потвърди и синхронизирай</Button></div></div></div>}
-      {mappingConfirm && discovery && <div className="modal-overlay"><div className="modal" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="inv-mapping-title"><h3 id="inv-mapping-title">Потвърдете записването на съпоставянията</h3><p>{nf.format(discovery.proposedMappings)} проверени съпоставяния в Shopify. Създават се нужните защитени полета за идентичност и собственост. Наличностите, SKU, цените и съдържанието не се променят.</p><p className="inv-help">Конфликтните и недостатъчно потвърдените съпоставяния се пропускат. B2BMarkt управлява потвърдените припокривания със Symetron. Можете да спрете след текущата партида и да продължите с нов преглед.</p><div className="modal-actions"><Button onClick={() => setMappingConfirm(false)}>Отказ</Button><Button variant="primary" onClick={() => void saveMappings()}>Потвърди и запиши съпоставянията</Button></div></div></div>}
+      {mappingConfirm && discovery && <div className="modal-overlay"><div className="modal" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="inv-mapping-title"><h3 id="inv-mapping-title">Потвърдете записването на съпоставянията</h3><p>{discovery.supplier ? `${names[discovery.supplier]} · ` : ''}{nf.format(discovery.proposedMappings)} проверени съпоставяния в Shopify. Създават се нужните защитени полета за идентичност и собственост. Наличностите, SKU, цените и съдържанието не се променят.</p><p className="inv-help">Конфликтните и недостатъчно потвърдените съпоставяния се пропускат. B2BMarkt управлява потвърдените припокривания със Symetron. Можете да спрете след текущата партида и да продължите с нов преглед. {discovery.supplier && 'След записването ще видите отделно потвърждение за промените в наличностите на този доставчик.'}</p><div className="modal-actions"><Button onClick={() => setMappingConfirm(false)}>Отказ</Button><Button variant="primary" onClick={() => void saveMappings()}>Потвърди и запиши съпоставянията</Button></div></div></div>}
     </div>
   </DashboardLayout>;
 }

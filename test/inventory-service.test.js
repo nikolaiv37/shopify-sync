@@ -103,3 +103,26 @@ test('browser backfill initializes definitions only after signed mapping authori
 test('mapping discovery retains Shopify title, current SKU, and selected location quantity for review',async()=>{
  const f=fixture({mapped:false});f.variants[0].title='Shopify title';const d=await f.service.discovery();assert.equal(d.rows[0].shopifyTitle,'Shopify title');assert.equal(d.rows[0].currentSku,'NEW-0');assert.equal(d.rows[0].currentQuantity,3);assert.equal(d.rows[0].quantity,7);
 });
+
+test('vendor setup signs only proposals owned by selected supplier and keeps global overlap decisions',async()=>{
+ const f=fixture({mapped:false,count:3});
+ f.records[1].supplier='b2bmarkt';f.records[1].platformId='platform-overlap';
+ f.records[2].supplier='symetron';f.variants[1].vendor='Europe';f.variants[2].vendor='Europe';
+ f.records.push({...f.records[1],supplier:'symetron',rowId:'symetron:overlap'});
+ const all=await f.service.discovery();assert.equal(all.proposedMappings,3);
+ const sym=await f.service.discovery({supplier:'symetron'});
+ assert.equal(sym.supplier,'symetron');assert.equal(sym.rows.length,2);assert.equal(sym.proposedMappings,1);
+ const payload=verifyPreview(sym.batches[0],{}, {key,now:100000});
+ assert.equal(payload.items.length,1);assert.equal(payload.items[0].ownership.locations[locationId].supplier,'symetron');
+ const b2b=await f.service.discovery({supplier:'b2bmarkt'});assert.equal(b2b.proposedMappings,1);
+ const shared=verifyPreview(b2b.batches[0],{}, {key,now:100000}).items[0];
+ assert.deepEqual(Object.keys(shared.identity.suppliers).sort(),['b2bmarkt','symetron']);
+ assert.equal(shared.ownership.locations[locationId].supplier,'b2bmarkt');
+ await f.service.persistBatch({token:sym.batches[0],confirm:true});
+ assert.equal(f.writes.length,1);assert.equal(f.writes[0].proposal.variantId,f.variants[2].variantId);
+ const preview=await f.service.preview({supplier:'symetron',allowPartial:true});assert.equal(preview.canApply,true);
+ assert.equal(f.writes.every(w=>w.type==='mapping'),true);
+});
+test('vendor setup rejects unknown supplier rather than falling back to every supplier',async()=>{
+ const f=fixture({mapped:false});await assert.rejects(f.service.discovery({supplier:'unknown'}));assert.equal(f.writes.length,0);
+});

@@ -321,6 +321,7 @@ export type InventoryHistory = {
   startedAt: string; finishedAt: string; status: string; totals: { updated: number; skipped: number; errors: number };
 };
 export type IdentityDiscovery = {
+  supplier?: SupplierKey;
   runId: string; generatedAt: string; expiresAt: string; proposedMappings: number; prerequisites: string[]; batches: string[];
   summary: Record<SupplierKey, { total: number; verified: number; unmatched: number; insufficient: number; conflicts: number; overlaps: number }>;
   rows: Array<{ rowId: string; supplier: SupplierKey; supplierProductId: string; itemCode: string; title: string; shopifyTitle?: string; currentSku?: string; currentQuantity: number | null; quantity: number | null; delta: null; variantId: string | null; status: string; reason: string; owner?: SupplierKey; overlap?: boolean }>;

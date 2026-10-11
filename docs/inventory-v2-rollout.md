@@ -224,3 +224,10 @@ The first-use setup is now available from the authenticated dashboard, locally a
 The partial choice is signed into the preview and cannot be supplied retroactively to bypass a full-preview rejection. It cannot bypass missing protected definitions, permissions, or identity checks for selected rows. CLI equivalent: add `--verified-only` to the `preview` command, then use the normal separately confirmed `apply` command.
 
 The updated suite has **153 passing tests**, including signed browser setup authorization, authenticated mapping endpoint coverage, partial-preview binding, missing-definition blocking, exclusion of unresolved/duplicate canonical rows, and preservation of discovery titles, SKUs and location quantities. The local browser's live read-only discovery proposed 10,177 mappings; the mapping confirmation dialog opened and was cancelled successfully. No live mapping or quantity write was executed while validating this follow-up.
+
+
+### Vendor Sync button follow-up — 2026-10-11
+
+The Shopify vendor Sync button is actionable while idle, including before initial identity setup. It reuses a valid eligible preview or reads a fresh verified-only preview. If setup is required, it reads a vendor-scoped discovery and opens its mapping confirmation; confirmed mapping writes are followed by a fresh quantity preview and a separate quantity confirmation. Cancelling either dialog performs no subsequent writes. Large changes still require the unchecked explicit approval. Zero eligible changes show a message rather than a disabled action.
+
+Discovery evaluates all three suppliers before filtering mapping proposals by the selected supplier's location ownership. Thus shared Symetron/B2BMarkt products retain B2BMarkt priority, and selecting one vendor never saves unrelated vendors' proposals. Global setup remains available separately. The same API and built assets serve localhost and Vercel. All 155 tests and the production build pass; no browser verification or live write was performed for this follow-up.
