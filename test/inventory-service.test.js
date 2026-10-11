@@ -195,3 +195,35 @@ test('quantity journals retain bounded examples of confirmed before/after update
  const f=fixture({count:12});const preview=await f.service.preview({supplier:'megapap'});const result=await f.service.applyBatch({supplier:'megapap',token:preview.batches[0],confirm:true,allowLargeApply:true});
  assert.equal(result.run.recentUpdates.length,10);assert.equal(result.run.recentUpdates.every(r=>r.before===3&&r.after===7),true);assert.equal(result.run.recentUpdates[0].supplierProductId,'002');
 });
+
+test('mapping setup survives stock, title and feed order changes while rechecking identity evidence',async()=>{
+ const f=fixture({mapped:false,count:2});const d=await f.service.discovery({supplier:'megapap'});
+ f.records[0].quantity=99;f.records[0].title='New title';f.records.reverse();
+ const r=await f.service.persistBatch({token:d.batches[0],confirm:true});
+ assert.equal(r.counts.updated,2);assert.ok(f.writes.every(w=>w.type==='mapping'));
+});
+test('mapping setup rejects changed canonical source references before writing',async()=>{
+ for(const field of ['supplierProductId','itemCode','platformId','barcode']) {
+  const f=fixture({mapped:false});const d=await f.service.discovery({supplier:'megapap'});
+  f.records[0][field]='changed';
+  await assert.rejects(f.service.persistBatch({token:d.batches[0],confirm:true}),/идентификаторите/);
+  assert.equal(f.writes.length,0);
+ }
+});
+test('mapping setup rejects added duplicate source identifiers',async()=>{
+ const f=fixture({mapped:false});const d=await f.service.discovery({supplier:'megapap'});
+ f.records.push({...f.records[0],rowId:'megapap:duplicate'});
+ await assert.rejects(f.service.persistBatch({token:d.batches[0],confirm:true}),/идентификаторите/);
+ assert.equal(f.writes.length,0);
+});
+test('B2BMarkt becomes syncable after verified setup without changing stock during setup',async()=>{
+ const f=fixture({mapped:false});f.records[0].supplier='b2bmarkt';f.records[0].platformId='123';f.variants[0].vendor='Europe';
+ const before=await f.service.preview({supplier:'b2bmarkt',allowPartial:true});
+ assert.equal(before.canApply,false);assert.equal(before.setup.proposedMappings,1);
+ await f.service.persistBatch({token:before.setup.batches[0],confirm:true});
+ assert.equal(f.variants[0].available,3);
+ const after=await f.service.preview({supplier:'b2bmarkt',allowPartial:true});
+ assert.equal(after.canApply,true);assert.equal(after.summary.changes,1);assert.equal(after.mappingMissing,0);
+ const result=await f.service.applyBatch({supplier:'b2bmarkt',token:after.batches[0],confirm:true,allowLargeApply:true});
+ assert.equal(result.counts.updated,1);assert.equal(f.variants[0].available,7);
+});

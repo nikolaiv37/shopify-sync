@@ -12,7 +12,7 @@ const supplier = value('supplier'); const file = value('file');
 async function main() {
   if (!command || command === 'help') {
     console.log(`Inventory V2 (preview is read-only):
-  node scripts/inventory-v2.js discover --file=discovery.json [--overrides=approved-overrides.json]
+  node scripts/inventory-v2.js discover --file=discovery.json [--supplier=b2bmarkt] [--overrides=approved-overrides.json]
   node scripts/inventory-v2.js init-definitions --confirm
   node scripts/inventory-v2.js backfill --file=discovery.json --confirm [--allow-ownership-change] [--max-batches=1]
   node scripts/inventory-v2.js preview --supplier=megapap --file=preview.json [--verified-only]
@@ -32,7 +32,7 @@ Mapping writes and inventory writes are distinct authorized commands.`); return;
     if (!file) throw new Error('A --file path is required for the inspectable report.');
     const progress = n => console.error(`Read ${n} Shopify variants`);
     const overrides = value('overrides') ? JSON.parse(await fs.readFile(value('overrides'), 'utf8')) : {};
-    const report = command === 'discover' ? await service.discovery({ overrides, onProgress: progress }) : await service.preview({ supplier, onProgress: progress, allowPartial: flag('verified-only') });
+    const report = command === 'discover' ? await service.discovery({ supplier, overrides, onProgress: progress }) : await service.preview({ supplier, onProgress: progress, allowPartial: flag('verified-only') });
     await fs.writeFile(file, JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ file, summary: report.summary, proposedMappings: report.proposedMappings, mappingReady: report.mappingReady, prerequisites: report.prerequisites }, null, 2)); return;
   }
