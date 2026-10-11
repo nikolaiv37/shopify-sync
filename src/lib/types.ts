@@ -308,7 +308,7 @@ export type InventoryRow = {
 };
 export type InventoryPreview = {
   version: string; runId: string; supplier: SupplierKey; generatedAt: string; expiresAt: string;
-  location: { id: string; name: string }; mappingReady: boolean; mappingMissing: number; canApply: boolean;
+  location: { id: string; name: string }; mappingReady: boolean; mappingMissing: number; canApply: boolean; partial?: boolean;
   changePercent: number; thresholdExceeded: boolean; prerequisites: string[]; batches: string[]; rows: InventoryRow[];
   summary: { feedRows: number; validRows: number; matched: number; unmatched: number; conflicts: number; invalidQuantities: number; changes: number; alreadyCorrect: number; skipped: number; errors: number };
 };
@@ -323,5 +323,5 @@ export type InventoryHistory = {
 export type IdentityDiscovery = {
   runId: string; generatedAt: string; expiresAt: string; proposedMappings: number; prerequisites: string[]; batches: string[];
   summary: Record<SupplierKey, { total: number; verified: number; unmatched: number; insufficient: number; conflicts: number; overlaps: number }>;
-  rows: Array<{ rowId: string; supplier: SupplierKey; supplierProductId: string; itemCode: string; title: string; shopifyTitle?: string; currentSku?: string; variantId: string | null; status: string; reason: string; owner?: SupplierKey; overlap?: boolean }>;
+  rows: Array<{ rowId: string; supplier: SupplierKey; supplierProductId: string; itemCode: string; title: string; shopifyTitle?: string; currentSku?: string; currentQuantity: number | null; quantity: number | null; delta: null; variantId: string | null; status: string; reason: string; owner?: SupplierKey; overlap?: boolean }>;
 };

@@ -63,7 +63,7 @@ Apply requires explicit confirmation. Changes over 40% of eligible rows require 
 
 Reads preserve the existing Shopify retry behavior. Mutations retry only explicit throttling/HTTP 429 rejection; unknown transport outcomes are never blindly retried. API rejection is counted as failure. Unknown outcomes stop subsequent writes and retain the lock. A valid report can resume acknowledged batches without duplicate inventory writes. Failed/stale rows require a new preview rather than a blind replay.
 
-Legacy Shopify Apply via `/api/sync` and unsigned old CLI execution are blocked. Authenticated V2 endpoints serve preview, discovery, history, and signed apply batches. Mapping persistence is intentionally CLI-only.
+Legacy Shopify Apply via `/api/sync` and unsigned old CLI execution are blocked. Authenticated V2 endpoints serve preview, discovery, history, signed apply batches, and separately confirmed mapping batches.
 
 ## 6. B2BCenter compatibility
 
@@ -210,3 +210,17 @@ Never force recovery while an operation may still be running. After recovery, ge
 - Unknown outcomes require manual lock reconciliation. Journals retain completed batches and capped sample problems; exported reports retain full row details. Journal history currently has no automatic retention purge, so monitor growth rather than deleting audit records automatically.
 - A failed/timeout batch can have completed earlier row writes before the journal commits. Target-quantity checks prevent duplicate stock changes after reconciliation; those unjournaled changes need operator accounting and must not be advertised as confirmed history.
 - The portal's configured hostname is unreachable, and Symetron portal identity/ownership is unverified. Those live steps remain blocked while independent Shopify implementation and tests are complete.
+
+## Dashboard setup and verified-only synchronization (2026-10-11)
+
+The first-use setup is now available from the authenticated dashboard, locally and in the deployed build:
+
+1. Click **Преглед на съпоставянето** and review verified mappings, conflicts, and ownership.
+2. Click **Запиши проверените съпоставяния**, then confirm the separate mapping operation. This initializes missing protected definitions and persists only the signed, corroborated proposals. It does not change quantities, SKU, or product content. Existing ownership transfers remain blocked in this browser flow.
+3. Progress is displayed per batch. **Спри след текущата партида** stops between batches; completed mappings remain durable. Reuse a still-valid report to resume acknowledged batches, or generate a fresh discovery after expiry/feed changes. Full-catalog revalidation can take time; there is no automatic refresh or implicit approval of a new report.
+4. Click **Преглед на промените** for the desired supplier. If unresolved rows block full readiness, click **Преглед само на проверените**. This explicitly requests a partial preview; the supplier still displays incomplete mapping readiness. Only eligible persisted identities are signed for Apply; unmatched/conflicting/invalid rows remain skipped.
+5. Click **Синхронизирай проверените** (or **Синхронизирай** for complete readiness), review the exact change count/location, and confirm. Over-40% changes still require the separate unchecked approval. Staleness, ownership, quantity compare-and-set, and writer locks remain enforced.
+
+The partial choice is signed into the preview and cannot be supplied retroactively to bypass a full-preview rejection. It cannot bypass missing protected definitions, permissions, or identity checks for selected rows. CLI equivalent: add `--verified-only` to the `preview` command, then use the normal separately confirmed `apply` command.
+
+The updated suite has **153 passing tests**, including signed browser setup authorization, authenticated mapping endpoint coverage, partial-preview binding, missing-definition blocking, exclusion of unresolved/duplicate canonical rows, and preservation of discovery titles, SKUs and location quantities. The local browser's live read-only discovery proposed 10,177 mappings; the mapping confirmation dialog opened and was cancelled successfully. No live mapping or quantity write was executed while validating this follow-up.

@@ -74,3 +74,32 @@ test('missing protected definitions block preview readiness and Apply before any
  const blocked=await f.service.preview({supplier:'megapap'});assert.equal(blocked.mappingReady,false);assert.equal(blocked.canApply,false);assert.equal(blocked.batches.length,0);assert.equal(blocked.prerequisites.length,1);
  await assert.rejects(f.service.applyBatch({supplier:'megapap',token:p.batches[0],confirm:true,allowLargeApply:true}),/definitions/);assert.equal(f.writes.length,0);assert.equal(f.locked(),false);
 });
+
+test('explicit partial preview signs only eligible persisted rows; unresolved rows never write',async()=>{
+ const f=fixture({count:2});f.variants[1].identityValue=null;f.variants[1].identityDigest=null;f.variants[1].ownershipValue=null;f.variants[1].ownershipDigest=null;
+ const normal=await f.service.preview({supplier:'megapap'});assert.equal(normal.canApply,false);assert.equal(normal.batches.length,0);
+ const partial=await f.service.preview({supplier:'megapap',allowPartial:true});assert.equal(partial.mappingReady,false);assert.equal(partial.canApply,true);assert.equal(partial.partial,true);assert.equal(partial.mappingMissing,1);
+ const payload=verifyPreview(partial.batches[0],{kind:'inventory'},{key,now:100000});assert.equal(payload.partial,true);assert.equal(payload.items.length,1);
+ const result=await f.service.applyBatch({supplier:'megapap',token:partial.batches[0],confirm:true,allowLargeApply:true});assert.equal(result.counts.updated,1);assert.equal(f.writes.length,1);assert.equal(f.writes[0].row.variantId,f.variants[0].variantId);
+});
+test('partial mode requires boolean true and cannot bypass missing protected definitions',async()=>{
+ const f=fixture({mapped:false});assert.equal((await f.service.preview({supplier:'megapap',allowPartial:'true'})).partial,false);
+ f.store.requireDefinitions=async()=>{throw Object.assign(new Error('definitions required'),{statusCode:409});};
+ const p=await f.service.preview({supplier:'megapap',allowPartial:true});assert.equal(p.canApply,false);assert.equal(p.batches.length,0);
+});
+test('partial inventory apply skips unrelated canonical conflicts while validating selected rows',async()=>{
+ const f=fixture({count:2});f.records.push({...f.records[1],rowId:'megapap:2'});
+ const p=await f.service.preview({supplier:'megapap',allowPartial:true});assert.equal(p.summary.conflicts,2);assert.equal(p.batches.length,1);
+ const r=await f.service.applyBatch({supplier:'megapap',token:p.batches[0],confirm:true,allowLargeApply:true});assert.equal(r.counts.updated,1);assert.equal(f.writes.length,1);assert.equal(f.writes[0].row.variantId,f.variants[0].variantId);
+});
+test('browser backfill initializes definitions only after signed mapping authorization and confirmation',async()=>{
+ const f=fixture({mapped:false});const definitions=[];
+ f.store.read=async()=>({metafieldDefinitions:{nodes:[]}});f.store.setDefinition=async d=>{definitions.push(d);return{id:d.key};};
+ const d=await f.service.discovery();
+ await assert.rejects(f.service.persistBatch({token:'tampered',confirm:true,initializeDefinitions:true}));assert.equal(definitions.length,0);
+ await assert.rejects(f.service.persistBatch({token:d.batches[0],initializeDefinitions:true}));assert.equal(definitions.length,0);
+ const r=await f.service.persistBatch({token:d.batches[0],confirm:true,initializeDefinitions:true});assert.equal(r.counts.updated,1);assert.equal(definitions.length,2);assert.equal(f.writes[0].type,'mapping');assert.ok(definitions.every(d=>d.access.admin==='MERCHANT_READ'));
+});
+test('mapping discovery retains Shopify title, current SKU, and selected location quantity for review',async()=>{
+ const f=fixture({mapped:false});f.variants[0].title='Shopify title';const d=await f.service.discovery();assert.equal(d.rows[0].shopifyTitle,'Shopify title');assert.equal(d.rows[0].currentSku,'NEW-0');assert.equal(d.rows[0].currentQuantity,3);assert.equal(d.rows[0].quantity,7);
+});

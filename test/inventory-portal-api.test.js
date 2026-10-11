@@ -22,7 +22,7 @@ function response(){return{statusCode:null,body:null,writeHead(code,headers){thi
 const cookie=password=>`mebelcenter_ops_auth=${crypto.createHash('sha256').update(password).digest('hex')}`;
 test('inventory APIs require authenticated dashboard session',async()=>{
  const old=process.env.DASHBOARD_PASSWORD;process.env.DASHBOARD_PASSWORD='test-local';
- try{for(const route of ['preview','discovery','apply-batch','history']){const res=response();await handleDashboardRequest({url:`/api/inventory/${route}`,method:route==='history'?'GET':'POST',headers:{host:'localhost'},body:{}},res);assert.equal(res.statusCode,401);}}finally{if(old==null)delete process.env.DASHBOARD_PASSWORD;else process.env.DASHBOARD_PASSWORD=old;}
+ try{for(const route of ['preview','discovery','backfill-batch','apply-batch','history']){const res=response();await handleDashboardRequest({url:`/api/inventory/${route}`,method:route==='history'?'GET':'POST',headers:{host:'localhost'},body:{}},res);assert.equal(res.statusCode,401);}}finally{if(old==null)delete process.env.DASHBOARD_PASSWORD;else process.env.DASHBOARD_PASSWORD=old;}
 });
 test('legacy Shopify apply endpoint cannot bypass signed Preview authorization',async()=>{
  const old=process.env.DASHBOARD_PASSWORD;process.env.DASHBOARD_PASSWORD='test-local';

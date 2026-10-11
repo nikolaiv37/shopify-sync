@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { Button } from '../components/ui/Buttons';
 import { Progress } from '../components/feedback/Progress';
-import { previewInventory, applyInventoryBatch, getInventoryHistory, discoverInventoryIdentities, runSync, getRuns } from '../lib/api';
+import { previewInventory, applyInventoryBatch, persistInventoryMappings, getInventoryHistory, discoverInventoryIdentities, runSync, getRuns } from '../lib/api';
 import type { InventoryPreview, InventoryHistory, IdentityDiscovery, InventoryBatchResult, SupplierKey, SyncSummary, RecentRun } from '../lib/types';
 
 const suppliers = [{ key: 'megapap' as const, name: 'MegaPap' }, { key: 'b2bmarkt' as const, name: 'B2BMarkt' }, { key: 'symetron' as const, name: 'Symetron' }];
@@ -51,6 +51,8 @@ export function InventorySyncPage() {
   const [search, setSearch] = useState(''); const [filter, setFilter] = useState('all'); const [page, setPage] = useState(0);
   const [outcomes, setOutcomes] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<{ supplier: SupplierKey; portal: boolean } | null>(null);
+  const [mappingConfirm, setMappingConfirm] = useState(false);
+  const stopMapping = useRef(false);
   const [large, setLarge] = useState(false); const [clock, setClock] = useState(Date.now());
   const guard = useRef(false); const dialog = useRef<HTMLDivElement>(null); const previousFocus = useRef<HTMLElement | null>(null);
   async function loadHistory() {
@@ -60,11 +62,11 @@ export function InventorySyncPage() {
   }
   useEffect(() => { void loadHistory(); const timer = window.setInterval(() => setClock(Date.now()), 15000); return () => window.clearInterval(timer); }, []);
   useEffect(() => {
-    if (!pending) return;
+    if (!pending && !mappingConfirm) return;
     previousFocus.current = document.activeElement as HTMLElement;
     const first = dialog.current?.querySelector<HTMLElement>('input, button'); first?.focus();
     function keydown(e: KeyboardEvent) {
-      if (e.key === 'Escape') { e.preventDefault(); setPending(null); }
+      if (e.key === 'Escape') { e.preventDefault(); setPending(null); setMappingConfirm(false); }
       if (e.key === 'Tab') {
         const list = Array.from(dialog.current?.querySelectorAll<HTMLElement>('input, button:not(:disabled)') || []);
         const first = list[0], last = list.at(-1);
@@ -74,7 +76,7 @@ export function InventorySyncPage() {
     }
     document.addEventListener('keydown', keydown);
     return () => { document.removeEventListener('keydown', keydown); previousFocus.current?.focus(); };
-  }, [pending]);
+  }, [pending, mappingConfirm]);
   const preview = previews[selected];
   const rows = showDiscovery ? discovery?.rows || [] : preview?.rows || [];
   const filtered = useMemo(() => rows.filter(row => {
@@ -85,10 +87,27 @@ export function InventorySyncPage() {
   async function task(key: string, action: () => Promise<void>) {
     if (guard.current) return; guard.current = true; setBusy(key); setError(''); setMessage('');
     try { await action(); } catch (e) { setError(e instanceof Error ? e.message : 'Операцията не бе изпълнена. Обновете прегледа.'); }
-    finally { if (key.startsWith('apply-')) await loadHistory(); guard.current = false; setBusy(null); setClock(Date.now()); }
+    finally { if (key.startsWith('apply-') || key === 'backfill') await loadHistory(); guard.current = false; setBusy(null); setClock(Date.now()); }
   }
-  async function inspect(supplier: SupplierKey) {
-    await task(`preview-${supplier}`, async () => { setSelected(supplier); setShowDiscovery(false); setPage(0); setOutcomes({}); const p = await previewInventory(supplier); setPreviews(prev => ({ ...prev, [supplier]: p })); setMessage(`${names[supplier]}: прегледът е готов. Няма направени промени.`); });
+  async function inspect(supplier: SupplierKey, allowPartial = false) {
+    await task(`preview-${supplier}`, async () => { setSelected(supplier); setShowDiscovery(false); setPage(0); setOutcomes({}); const p = await previewInventory(supplier, allowPartial); setPreviews(prev => ({ ...prev, [supplier]: p })); setMessage(`${names[supplier]}: прегледът е готов. Няма направени промени.${p.partial ? ' Ще се синхронизират само потвърдените продукти; останалите се пропускат.' : ''}`); });
+  }
+  async function saveMappings() {
+    setMappingConfirm(false);
+    const report = discovery;
+    if (!report || Date.now() >= new Date(report.expiresAt).getTime()) { setError('Прегледът на съпоставянето е изтекъл. Направете нов преглед.'); return; }
+    stopMapping.current = false;
+    await task('backfill', async () => {
+      setPreviews({});
+      let saved = 0, skipped = 0, errors = 0;
+      for (const [index, token] of report.batches.entries()) {
+        if (stopMapping.current) break;
+        setMessage(`Съпоставяне: партида ${index + 1} от ${report.batches.length} · ${saved} записани. Наличностите не се променят.`);
+        const result = await persistInventoryMappings(token, index === 0);
+        saved += result.counts.updated; skipped += result.counts.skipped; errors += result.counts.errors;
+      }
+      setMessage(`Съпоставяне: ${saved} записани, ${skipped} пропуснати, ${errors} грешки. Наличностите не са променени. Направете преглед на проверените продукти за избрания доставчик.`);
+    });
   }
   async function inspectMappings() {
     await task('discovery', async () => { setDiscovery(await discoverInventoryIdentities()); setShowDiscovery(true); setFilter('all'); setPage(0); setMessage('Съпоставянето е прегледано без записи. Записването е отделна, потвърдена операция.'); });
@@ -130,7 +149,10 @@ export function InventorySyncPage() {
   return <DashboardLayout active="inventory" eyebrow="Оперативен панел" title="Синхронизация на наличности" subtitle="Прегледайте промените и проблемите, след което потвърдете синхронизацията за избрания доставчик и локация.">
     <div className="inventory-v2">
       <div className="inv-workflow"><span>1 · Преглед</span><span>2 · Проверка на промените</span><span>3 · Потвърждение и синхронизация</span><Button size="sm" onClick={() => void inspectMappings()} disabled={!!busy}>Преглед на съпоставянето</Button></div>
-      {busy && <Progress text={busy === 'discovery' ? 'Проверяват се идентичностите в трите каталога и Shopify…' : busy.startsWith('apply') ? message || 'Проверка и прилагане на партидата…' : 'Четат се каталозите и наличностите. Без записи…'} />}
+      <p className="inv-help">При първо използване: „Преглед на съпоставянето“ → проверете резултата → „Запиши проверените съпоставяния“. След това направете преглед на наличностите и потвърдете синхронизацията.</p>
+      {showDiscovery && discovery && <div className="inv-workflow"><Button variant="primary" disabled={!!busy || !discovery.batches.length || discovery.prerequisites.length > 0 || clock >= new Date(discovery.expiresAt).getTime()} onClick={() => setMappingConfirm(true)}>Запиши проверените съпоставяния</Button><span>{nf.format(discovery.proposedMappings)} предложени записи · без промяна на наличности</span></div>}
+      {busy === 'backfill' && <Button onClick={() => { stopMapping.current = true; setMessage('Съпоставянето ще спре след текущата партида. Завършените записи се запазват.'); }}>Спри след текущата партида</Button>}
+      {busy && <Progress text={busy === 'discovery' ? 'Проверяват се идентичностите в трите каталога и Shopify…' : busy.startsWith('apply') || busy === 'backfill' ? message || 'Проверка и прилагане на партидата…' : 'Четат се каталозите и наличностите. Без записи…'} />}
       <div aria-live="polite">{message && <p className="inv-notice">{message}</p>}</div>
       {error && <p className="inv-notice is-error" role="alert">{error} Завършените партиди остават записани; проверете историята преди повторение.</p>}
       <section aria-labelledby="shopify-title"><div className="section-heading"><div><p className="eyebrow">Онлайн магазин</p><h2 id="shopify-title">Наличности в Shopify</h2></div><p className="section-note">Наличност за конкретната локация · Само потвърдени идентичности</p></div>
@@ -143,7 +165,9 @@ export function InventorySyncPage() {
             <dl className="inv-timestamps"><div><dt>Преглед</dt><dd>{date(p?.generatedAt)}{p && expired(p) ? ' · изтекъл' : ''}</dd></div><div><dt>Успешен синхрон</dt><dd>{date(last?.finishedAt)}</dd></div></dl>
             {p?.mappingMissing ? <p className="inv-help">{p.mappingMissing} идентичности чакат потвърдено записване.</p> : null}
             {p?.prerequisites.map(text => <p className="inv-help" key={text}>{text}</p>)}
-            <div className="card-actions"><Button variant="secondary" disabled={!!busy} onClick={() => void inspect(s.key)}>Преглед на промените</Button><Button variant="primary" disabled={!!busy || !p?.canApply || expired(p)} onClick={() => { setLarge(false); setPending({ supplier: s.key, portal: false }); }}>Синхронизирай</Button></div>
+            {p?.partial && <p className="inv-help">Частичен преглед: само проверените продукти. {p.summary.skipped} проблемни или недопустими реда се пропускат.</p>}
+            <div className="card-actions"><Button variant="secondary" disabled={!!busy} onClick={() => void inspect(s.key)}>Преглед на промените</Button><Button variant="primary" disabled={!!busy || !p?.canApply || expired(p)} onClick={() => { setLarge(false); setPending({ supplier: s.key, portal: false }); }}>{p?.partial ? 'Синхронизирай проверените' : 'Синхронизирай'}</Button></div>
+            {p && !p.mappingReady && p.prerequisites.length === 0 && <Button size="sm" disabled={!!busy} onClick={() => void inspect(s.key, true)}>Преглед само на проверените</Button>}
             <div className="inv-card-links"><button disabled={!p || !!busy} onClick={() => { setSelected(s.key); setShowDiscovery(false); setFilter('problems'); setPage(0); }}>Виж проблемите</button><a href="#inventory-history">История</a></div>
           </article>;
         })}</div>
@@ -160,6 +184,7 @@ export function InventorySyncPage() {
       <section aria-labelledby="portal-title"><div className="section-heading"><div><p className="eyebrow">Портал за доставчици</p><h2 id="portal-title">B2BCenter</h2></div><p className="section-note">Отделно съпоставяне по артикул, клиент и производител</p></div><div className="inv-portal-grid">{suppliers.filter(s => s.key !== 'symetron').map(s => { const p = portal[s.key]; return <article className="supplier-card inv-portal" key={s.key}><div><h3>{s.name}</h3><p className="card-caption">{p ? `${p.planned} промени · ${p.skipped} пропуснати` : 'Непроверена връзка · нужен е преглед'}</p><small>Последен преглед: {date(p?.finishedAt || undefined)}</small></div><div className="card-actions"><Button disabled={!!busy} onClick={() => void inspectPortal(s.key)}>Преглед</Button><Button variant="primary" disabled={!!busy || !p?.previewToken || !p.planned} onClick={() => { setLarge(false); setPending({ supplier: s.key, portal: true }); }}>Синхронизирай</Button></div></article>; })}</div><p className="inv-help">Symetron в B2BCenter: идентичностите и собствеността не са потвърдени. Синхронизацията не е активирана.</p></section>
       <section id="inventory-history" className="panel"><div className="panel-heading"><div><p className="eyebrow">История</p><h2>Последни операции</h2></div><Button size="sm" disabled={!!busy} onClick={() => void loadHistory()}>Обнови</Button></div>{historyError && <p role="status" className="inv-help">{historyError}</p>}{portalVolatile && <p className="inv-help">Историята на Shopify е постоянна. Логовете на портала във Vercel са временни.</p>}<div className="table-wrap"><table><thead><tr><th>Дестинация · Доставчик</th><th>Операция / статус</th><th>Начало / край</th><th className="num">Обновени</th><th className="num">Пропуснати</th><th className="num">Грешки</th></tr></thead><tbody>{history.map(h => <tr key={h.runId}><td>Shopify · {names[h.supplier] || 'Всички'}</td><td>{h.operation === 'backfill' ? 'Идентичности' : 'Наличности'} · {h.status === 'complete' ? 'Завършено' : 'Частично'}</td><td>{date(h.startedAt)}<small className="inv-cell-detail">{date(h.finishedAt)}</small></td><td className="num">{h.totals.updated}</td><td className="num">{h.totals.skipped}</td><td className="num">{h.totals.errors}</td></tr>)}{portalHistory.map((h, i) => <tr key={`portal-${i}`}><td>{h.supplier}</td><td>{h.mode === 'apply' ? 'Синхронизация' : 'Преглед'}</td><td>{date(h.finishedAt || undefined)}</td><td className="num">{h.updated}</td><td className="num">{h.skipped}</td><td className="num">{h.errors}</td></tr>)}{!history.length && !portalHistory.length && <tr><td colSpan={6} className="empty-cell">Няма записани операции. Прегледът не променя наличностите.</td></tr>}</tbody></table></div></section>
       {pending && <div className="modal-overlay"><div className="modal" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="inv-confirm-title"><h3 id="inv-confirm-title">Потвърдете синхронизацията</h3><p>{names[pending.supplier]} · {pending.portal ? 'B2BCenter' : `Shopify · ${pendingPreview?.location.name}`}<br />{pending.portal ? portal[pending.supplier]?.planned : pendingPreview?.summary.changes} промени само в наличностите.</p>{needsLarge && <label className="inv-large"><input type="checkbox" checked={large} onChange={e => setLarge(e.target.checked)} />Одобрявам промяната на повече от 40% от съпоставените наличности.</label>}<p className="inv-help">Всяка партида проверява отново идентичността, собствеността и наблюдаваната наличност.</p><div className="modal-actions"><Button onClick={() => setPending(null)}>Отказ</Button><Button variant="primary" disabled={!!needsLarge && !large} onClick={() => void apply()}>Потвърди и синхронизирай</Button></div></div></div>}
+      {mappingConfirm && discovery && <div className="modal-overlay"><div className="modal" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="inv-mapping-title"><h3 id="inv-mapping-title">Потвърдете записването на съпоставянията</h3><p>{nf.format(discovery.proposedMappings)} проверени съпоставяния в Shopify. Създават се нужните защитени полета за идентичност и собственост. Наличностите, SKU, цените и съдържанието не се променят.</p><p className="inv-help">Конфликтните и недостатъчно потвърдените съпоставяния се пропускат. B2BMarkt управлява потвърдените припокривания със Symetron. Можете да спрете след текущата партида и да продължите с нов преглед.</p><div className="modal-actions"><Button onClick={() => setMappingConfirm(false)}>Отказ</Button><Button variant="primary" onClick={() => void saveMappings()}>Потвърди и запиши съпоставянията</Button></div></div></div>}
     </div>
   </DashboardLayout>;
 }
