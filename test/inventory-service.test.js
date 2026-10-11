@@ -39,7 +39,7 @@ test('correct apply changes only selected location and quantities; replay is ide
 test('live quantity changed after Preview is stale',async()=>{const f=fixture();const p=await f.service.preview({supplier:'megapap'});f.variants[0].available=4;const r=await f.service.applyBatch({supplier:'megapap',token:p.batches[0],confirm:true,allowLargeApply:true});assert.equal(r.results[0].status,'stale');assert.equal(f.writes.length,0);});
 test('inventory reaching target after Preview is already correct',async()=>{const f=fixture();const p=await f.service.preview({supplier:'megapap'});f.variants[0].available=7;const r=await f.service.applyBatch({supplier:'megapap',token:p.batches[0],confirm:true,allowLargeApply:true});assert.equal(r.results[0].status,'already');assert.equal(f.writes.length,0);});
 test('changed ownership invalidates affected update',async()=>{const f=fixture();const p=await f.service.preview({supplier:'megapap'});f.variants[0].ownershipDigest='changed';const r=await f.service.applyBatch({supplier:'megapap',token:p.batches[0],confirm:true,allowLargeApply:true});assert.equal(r.results[0].status,'conflict');assert.equal(f.writes.length,0);});
-test('changed feed fingerprint invalidates apply',async()=>{const f=fixture();const p=await f.service.preview({supplier:'megapap'});f.records[0].quantity=99;await assert.rejects(f.service.applyBatch({supplier:'megapap',token:p.batches[0],confirm:true,allowLargeApply:true}),/каталогът/);assert.equal(f.writes.length,0);});
+test('changed supplier quantity is skipped without writing an unapproved value',async()=>{const f=fixture();const p=await f.service.preview({supplier:'megapap'});f.records[0].quantity=99;const result=await f.service.applyBatch({supplier:'megapap',token:p.batches[0],confirm:true,allowLargeApply:true});assert.equal(result.counts.skipped,1);assert.equal(result.results[0].reason,'supplier-quantity-changed-after-preview');assert.equal(f.writes.length,0);});
 test('changed selected location invalidates apply',async()=>{const f=fixture();const p=await f.service.preview({supplier:'megapap'});f.store.location=async()=>({id:'gid://shopify/Location/2'});await assert.rejects(f.service.applyBatch({supplier:'megapap',token:p.batches[0],confirm:true,allowLargeApply:true}),/Локацията/);});
 test('partial API rejections are counted as failures, never successes',async()=>{const f=fixture({count:2});let index=0;f.store.setQuantity=async()=>++index===1?{status:'success'}:{status:'failed',reason:'API rejected'};const p=await f.service.preview({supplier:'megapap'});const r=await f.service.applyBatch({supplier:'megapap',token:p.batches[0],confirm:true,allowLargeApply:true});assert.deepEqual(r.counts,{updated:1,skipped:0,errors:1});assert.equal(r.run.status,'partial_failure');});
 test('unknown write result stops and keeps writer lock for reconciliation',async()=>{const f=fixture();f.store.setQuantity=async()=>{throw new Error('network timeout');};const p=await f.service.preview({supplier:'megapap'});await assert.rejects(f.service.applyBatch({supplier:'megapap',token:p.batches[0],confirm:true,allowLargeApply:true}),/Неясен/);assert.equal(f.locked(),true);});
@@ -177,4 +177,21 @@ test('post-setup preview rereads journaled variants instead of scanning Shopify 
  assert.equal(scans,1);assert.equal(refreshed.summary.changes,3);assert.equal(refreshed.canApply,true);
  await assert.rejects(f.service.preview({supplier:'symetron',setupRunId:preview.setup.runId}),/Няма завършено/);
  await assert.rejects(f.service.preview({supplier:'megapap',setupRunId:'unknown'}),/Няма завършено/);
+});
+
+test('unrelated feed edits and reordered rows do not cancel approved quantity updates',async()=>{
+ const f=fixture({count:3});const preview=await f.service.preview({supplier:'megapap'});
+ f.records.reverse();f.records.forEach((record,index)=>{record.rowId=`megapap:${index}`;record.title='New description';});f.records.find(r=>r.supplierProductId==='001').quantity=99;
+ const result=await f.service.applyBatch({supplier:'megapap',token:preview.batches[0],confirm:true,allowLargeApply:true});
+ assert.equal(result.counts.updated,2);assert.equal(result.counts.skipped,1);assert.equal(f.writes.every(w=>w.row.quantity===7),true);
+ assert.equal(f.variants[1].available,3);
+});
+test('deleted or duplicated canonical records are skipped while unaffected approved products continue',async()=>{
+ const f=fixture({count:3});const preview=await f.service.preview({supplier:'megapap'});f.records.splice(1,1);f.records.push({...f.records[0],rowId:'duplicate'});
+ const result=await f.service.applyBatch({supplier:'megapap',token:preview.batches[0],confirm:true,allowLargeApply:true});assert.equal(result.counts.updated,1);assert.equal(result.counts.skipped,2);assert.equal(f.writes[0].row.supplierProductId,'002');
+});
+
+test('quantity journals retain bounded examples of confirmed before/after updates',async()=>{
+ const f=fixture({count:12});const preview=await f.service.preview({supplier:'megapap'});const result=await f.service.applyBatch({supplier:'megapap',token:preview.batches[0],confirm:true,allowLargeApply:true});
+ assert.equal(result.run.recentUpdates.length,10);assert.equal(result.run.recentUpdates.every(r=>r.before===3&&r.after===7),true);assert.equal(result.run.recentUpdates[0].supplierProductId,'002');
 });

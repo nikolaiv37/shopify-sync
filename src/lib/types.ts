@@ -318,6 +318,7 @@ export type InventoryBatchResult = {
   counts: { updated: number; skipped: number; errors: number }; replayed?: boolean;
 };
 export type InventoryHistory = {
+  recentUpdates?: Array<{ variantId: string; supplierProductId: string; title: string; sku: string; before: number; after: number }>;
   runId: string; operation: 'inventory' | 'backfill'; supplier: SupplierKey | 'all'; target: 'shopify';
   startedAt: string; finishedAt: string; status: string; totals: { updated: number; skipped: number; errors: number };
 };
